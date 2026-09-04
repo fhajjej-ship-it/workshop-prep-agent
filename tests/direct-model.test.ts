@@ -9,6 +9,7 @@ const params: LanguageModelV4CallOptions = {
   reasoning: 'low', maxOutputTokens: 6000,
 };
 const environment = { NODE_ENV: 'test' as const, WORKSHOP_MODE: 'live', WORKSHOP_STORE: 'local', GOOGLE_GENERATIVE_AI_API_KEY: 'placeholder-google-key' };
+const postgres = { WORKSHOP_STORE: 'postgres', DATABASE_URL: 'postgresql://test:test@example.test/workshop' };
 
 test('native direct Google model is lazy and sends only the explicitly invoked mocked request', async t => {
   const originalEnvironment = process.env;
@@ -46,9 +47,11 @@ test('missing direct key and nonlocal configuration cannot invoke the native pro
     process.env = { ...environment, AI_GATEWAY_API_KEY: 'placeholder-gateway-key', GOOGLE_GENERATIVE_AI_API_KEY: key };
     assert.throws(createDirectGoogleModel, /requires GOOGLE_GENERATIVE_AI_API_KEY/);
   }
-  for (const override of [{ VERCEL: '1' }, { WORKSHOP_STORE: 'postgres' }, { WORKSHOP_MODE: 'test' }, { WORKSHOP_MODEL: 'unsupported' }]) {
+  for (const override of [{ VERCEL: '1' }, { ...postgres, VERCEL: '1' }, { WORKSHOP_STORE: 'postgres' }, { WORKSHOP_MODE: 'test' }, { WORKSHOP_MODEL: 'unsupported' }]) {
     process.env = { ...environment, ...override };
     assert.throws(createDirectGoogleModel, /valid local live configuration/);
   }
+  process.env = { ...environment, ...postgres };
+  assert.equal(createDirectGoogleModel().modelId, LIVE_MODEL);
   assert.equal(networkCalls, 0);
 });

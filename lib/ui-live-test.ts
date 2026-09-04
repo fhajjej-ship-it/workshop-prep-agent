@@ -5,7 +5,7 @@ import { advanceRun, createRun, readRun } from './agent';
 import { getConfig } from './config';
 import { createDirectGoogleModel } from './direct-model';
 import { RequestError } from './http';
-import { getStore, LocalRunStore, validRunId } from './store';
+import { getStore, LocalRunStore, validRunId, type RunStore } from './store';
 import type { AppConfig, Brief, Run } from './types';
 
 // The former UI allowance is an archive. Reading it never seals or rewrites evidence.
@@ -29,8 +29,17 @@ export async function createUiRun(brief: Brief): Promise<Run> {
   return createRun(brief, getStore(), getConfig());
 }
 
+async function storeForRun(id: string): Promise<RunStore> {
+  if (getConfig().storage === 'postgres') {
+    // Runs created before the storage switch stay in their original local store.
+    const local = new LocalRunStore();
+    if (await local.read(id)) return local;
+  }
+  return getStore();
+}
+
 export async function readUiRun(id: string): Promise<Run | null> {
-  return await archivedUiRun(id) ?? readRun(id, getStore());
+  return await archivedUiRun(id) ?? readRun(id, await storeForRun(id));
 }
 
 export async function advanceUiRun(id: string, format?: Brief['format'], fetch?: FetchFunction): Promise<Run | null> {
@@ -40,7 +49,7 @@ export async function advanceUiRun(id: string, format?: Brief['format'], fetch?:
     throw new RequestError('This historical test is read-only. Start a new local run to continue preparing a workshop.', 409);
   }
   const config = getConfig();
-  const store = getStore();
+  const store = await storeForRun(id);
   if (!await store.read(id)) return null;
   return advanceRun(id, store, format, {
     config,

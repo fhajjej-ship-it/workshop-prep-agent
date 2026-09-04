@@ -5,7 +5,8 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { advanceUiRun, createUiRun, getUiConfig, readUiRun } from '../lib/ui-live-test';
 import { createTestPack } from '../lib/test-pack';
-import type { Brief } from '../lib/types';
+import { PostgresRunStore } from '../lib/store';
+import type { Brief, Run } from '../lib/types';
 import { GET as readRoute } from '../app/api/runs/[id]/route';
 import { GET as downloadRoute } from '../app/api/runs/[id]/download/route';
 
@@ -13,6 +14,7 @@ const brief: Brief = {
   audience: 'Synthetic executive group', objective: 'Choose one safe AI experiment',
   durationMinutes: 90, constraints: 'Synthetic examples only.', format: '',
 };
+const postgres = { WORKSHOP_STORE: 'postgres', DATABASE_URL: 'postgresql://test:test@example.test/workshop' };
 async function fixture(fn: (directory: string) => Promise<void>) {
   const originalDirectory = process.cwd();
   const directory = await mkdtemp(path.join(originalDirectory, '.local-test-ui-'));
@@ -36,8 +38,10 @@ test('normal local readiness needs no manifest and still rejects missing keys or
   assert.equal(getUiConfig({ ...process.env, WORKSHOP_UI_TEST_DIR: '/unused/old-allowance' }).ready, true);
   for (const override of [
     { VERCEL: '1' }, { WORKSHOP_STORE: 'postgres' }, { WORKSHOP_MODEL: 'another-model' },
-    { GOOGLE_GENERATIVE_AI_API_KEY: '' },
+    { GOOGLE_GENERATIVE_AI_API_KEY: '' }, { ...postgres, VERCEL: '1' },
   ]) assert.equal(getUiConfig({ ...process.env, ...override }).ready, false);
+  assert.equal(getUiConfig({ ...process.env, ...postgres }).ready, true);
+  assert.match(getUiConfig({ ...process.env, WORKSHOP_STORE: 'postgres' }).blockers.join(), /DATABASE_URL/);
   assert.equal(getUiConfig({ WORKSHOP_MODE: 'test', WORKSHOP_STORE: 'local' }).ready, true);
 }));
 
@@ -52,7 +56,7 @@ test('repeated creation makes independent local runs without claims, ledgers or 
   assert.equal(await advanceUiRun(randomUUID()), null);
 }));
 
-test('normal direct UI workflow pauses and resumes with mocked transport, then permits another run', async () => fixture(async () => {
+test('a local run resumes and downloads after switching to Postgres, while new runs use Postgres', async t => fixture(async directory => {
   const run = await createUiRun(brief);
   const plan = [
     ['ask_missing_info', {}],
@@ -77,6 +81,18 @@ test('normal direct UI workflow pauses and resumes with mocked transport, then p
   };
   assert.equal((await advanceUiRun(run.id, undefined, fetch))?.status, 'awaiting_input');
   assert.equal(calls, 1);
+  process.env = { ...process.env, ...postgres };
+  const databaseRuns = new Map<string, Run>();
+  const create = t.mock.method(PostgresRunStore.prototype, 'create', async (created: Run) => {
+    databaseRuns.set(created.id, structuredClone(created));
+  });
+  const read = t.mock.method(PostgresRunStore.prototype, 'read', async (id: string) => {
+    assert.notEqual(id, run.id, 'An existing local run must never query Postgres.');
+    return structuredClone(databaseRuns.get(id) ?? null);
+  });
+  const save = t.mock.method(PostgresRunStore.prototype, 'save', async () => {
+    assert.fail('Resuming an existing local run must never write to Postgres.');
+  });
   assert.equal((await advanceUiRun(run.id, undefined, fetch))?.status, 'awaiting_input');
   assert.equal(calls, 1);
   const finished = await advanceUiRun(run.id, 'remote', fetch);
@@ -85,7 +101,18 @@ test('normal direct UI workflow pauses and resumes with mocked transport, then p
   assert.equal(finished.steps, 7);
   assert.equal((await readUiRun(run.id))?.status, 'completed');
   assert.equal((await advanceUiRun(run.id, 'remote', fetch))?.status, 'completed');
-  assert.notEqual((await createUiRun(brief)).id, run.id);
+  const downloaded = await downloadRoute(new Request(`http://localhost/api/runs/${run.id}/download?format=json`), { params: Promise.resolve({ id: run.id }) });
+  assert.equal(downloaded.status, 200);
+  assert.equal((await downloaded.json()).id, run.id);
+  assert.equal(JSON.parse(await readFile(path.join(directory, '.local', 'runs', `${run.id}.json`), 'utf8')).status, 'completed');
+  assert.equal(read.mock.callCount(), 0);
+  assert.equal(save.mock.callCount(), 0);
+  const created = await createUiRun(brief);
+  assert.notEqual(created.id, run.id);
+  assert.equal(create.mock.callCount(), 1);
+  assert.equal((await readUiRun(created.id))?.id, created.id);
+  assert.equal(read.mock.callCount(), 1);
+  assert.deepEqual(await readdir(path.join(directory, '.local', 'runs')), [`${run.id}.json`]);
   assert.equal(getUiConfig().ready, true);
   assert.equal(calls, 7);
 }));
@@ -104,6 +131,7 @@ test('historical UI result stays readable, downloadable and terminal on advance 
     [`runs/${archived.id}.json`]: JSON.stringify(archived),
   };
   for (const [filename, contents] of Object.entries(files)) await writeFile(path.join(historicalDirectory, filename), contents);
+  process.env = { ...process.env, ...postgres };
   // Saved evidence is still readable even if current inference configuration is unavailable.
   process.env.GOOGLE_GENERATIVE_AI_API_KEY = '';
   assert.equal(getUiConfig().ready, false);
