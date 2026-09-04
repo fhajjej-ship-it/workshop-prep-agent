@@ -1,0 +1,66 @@
+/* Motion follows actual page, disclosure and review content changes. */
+.motion-ui {
+  --motion-ease: cubic-bezier(.2, .75, .25, 1);
+}
+
+.motion-ui .material > .details-content > p {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+
+/* A single entrance establishes the page; no idle or simulated progress loops. */
+.motion-ui[data-ready="true"] .page-intro { animation: workshop-enter 620ms var(--motion-ease) both; }
+.motion-ui[data-ready="true"] .mode-banner { animation: workshop-enter 580ms var(--motion-ease) 70ms both; }
+.motion-ui[data-ready="true"] .brief-panel { animation: workshop-enter 620ms var(--motion-ease) 160ms both; }
+.motion-ui[data-ready="true"] .pack-panel { animation: workshop-enter 680ms var(--motion-ease) 210ms both; }
+.motion-ui .pack-tab-content { animation: workshop-tab-enter 340ms var(--motion-ease) both; }
+
+.motion-ui :is(.agenda-list, .notes-list, .source-list, .instruction-list) > li {
+  --row-delay: 0ms;
+  animation: workshop-row-enter 440ms var(--motion-ease) var(--row-delay) both;
+}
+.motion-ui :is(.agenda-list, .notes-list, .source-list, .instruction-list) > li:nth-child(2) { --row-delay: 55ms; }
+.motion-ui :is(.agenda-list, .notes-list, .source-list, .instruction-list) > li:nth-child(3) { --row-delay: 110ms; }
+.motion-ui :is(.agenda-list, .notes-list, .source-list, .instruction-list) > li:nth-child(4) { --row-delay: 165ms; }
+.motion-ui :is(.agenda-list, .notes-list, .source-list, .instruction-list) > li:nth-child(5) { --row-delay: 220ms; }
+.motion-ui :is(.agenda-list, .notes-list, .source-list, .instruction-list) > li:nth-child(6) { --row-delay: 275ms; }
+.motion-ui :is(.agenda-list, .notes-list, .source-list, .instruction-list) > li:nth-child(n+7) { --row-delay: 300ms; }
+
+/* Each segment waits for the previous 750ms reveal; widths retain agenda durations. */
+.motion-ui .agenda-segment {
+  transform-origin: left center;
+  animation: workshop-agenda-reveal 750ms cubic-bezier(.22, .68, .25, 1) both;
+}
+
+@keyframes workshop-enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes workshop-tab-enter {
+  from { opacity: .25; transform: translateY(5px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes workshop-row-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes workshop-agenda-reveal {
+  from { opacity: .25; clip-path: inset(0 100% 0 0); }
+  to { opacity: 1; clip-path: inset(0 0 0 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-ui,
+  .motion-ui *,
+  .motion-ui *::before,
+  .motion-ui *::after {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+    scroll-behavior: auto !important;
+  }
+  .motion-ui .agenda-segment { clip-path: none; }
+}

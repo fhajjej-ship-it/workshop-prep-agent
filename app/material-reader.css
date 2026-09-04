@@ -1,0 +1,92 @@
+.material-reader {
+  width: min(720px, calc(100vw - 48px));
+  max-width: none;
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--white);
+  color: var(--ink);
+  font-family: var(--font-body);
+  box-shadow: 0 20px 70px #0f172a24;
+}
+
+.material-reader[open] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  animation: material-reader-enter 220ms var(--motion-ease, ease-out) both;
+}
+
+.material-reader::backdrop { background: #0f172a70; }
+
+.material-reader-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.material-reader-heading > div { min-width: 0; }
+.material-reader-heading .eyebrow { margin-bottom: 8px; }
+.material-reader-heading h2 {
+  margin: 0 0 12px;
+  color: var(--navy);
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -.5px;
+  overflow-wrap: anywhere;
+}
+
+.material-reader-close {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--white);
+  color: var(--muted);
+  transition: background 150ms ease, color 150ms ease;
+}
+.material-reader-close:hover { background: var(--surface-soft); color: var(--navy); }
+
+.material-reader-content {
+  min-height: 0;
+  padding: 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.85;
+}
+.material-reader-content:focus-visible { outline-offset: -5px; }
+
+@keyframes material-reader-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (max-width: 690px) {
+  .material-reader {
+    width: calc(100vw - 32px);
+    max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
+  }
+  .material-reader-heading, .material-reader-content { padding: 20px; }
+  .material-reader-heading { gap: 12px; }
+  .material-reader-heading h2 { font-size: 24px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .material-reader[open] { animation: none; }
+  .material-reader-close { transition: none; }
+}
