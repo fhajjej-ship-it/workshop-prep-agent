@@ -294,3 +294,68 @@ test('PDF preserves an oversized header without trapping body rows in page creat
     } finally { await parser.destroy(); }
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+
+test('participant worksheets remove empty placeholders and stray numbering while PDF headings stay with content', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'workshop-participant-export-'));
+  try {
+    const run = await completedRun(new LocalRunStore(directory));
+    const tickets = ['Aster', 'Beacon', 'Cedar', 'Dune'];
+    const worksheet = ['| Ticket | Priority | Owner | Next action | Reason |', '| --- | --- | --- | --- | --- |', ...tickets.map(ticket => `| ${ticket} | [ ] | [] | [  ] | [ ] |`)].join('\n');
+    run.pack!.exercise.instructions = ['Read all four ticket facts.', 'Review the supplied policy.', 'Complete the response template.', worksheet, 'Compare the completed responses.'];
+    run.pack!.exercise.sampleResponse = `Illustrative worked answers for all four tickets:\n\n${tickets.map((ticket, index) => `${index + 1}. Ticket: ${ticket}\n- Priority: P${index % 3 + 1}\n- Owner: Accountable coordinator\n- Next action: Record the affected users, confirm the documented workaround, and request the next investigation update.\n- Reason: This fictional example retains the complete decision and the source-supported next action so facilitators can compare every field against the worksheet without reconstructing the answer.`).join('\n\n')}`;
+    const before = JSON.stringify(run);
+    const markdownBefore = packMarkdown(run);
+    const blocks = packExportBlocks(run);
+    assert.deepEqual(blocks.filter(block => block.kind === 'number').map(block => [block.number, block.text]), [
+      [1, 'Read all four ticket facts.'], [2, 'Review the supplied policy.'], [3, 'Complete the response template.'], [4, 'Compare the completed responses.'],
+    ], 'A table-only instruction produces no empty number or gap.');
+    const table = blocks.find(block => block.kind === 'table')!.table!;
+    assert.deepEqual(table.rows, tickets.map(ticket => [ticket, '', '', '', '']));
+    assert.ok(blocks.some(block => block.text === 'Participant worksheet'));
+    assert.ok(blocks.some(block => block.text === 'Complete during the exercise.'));
+    const literalLabel = structuredClone(run);
+    literalLabel.pack!.exercise.instructions = [worksheet.replace('| Aster |', '| [ ] |')];
+    assert.equal(packExportBlocks(literalLabel).find(block => block.kind === 'table')!.table!.rows[0][0], '[ ]', 'First-column row labels are preserved exactly.');
+    for (const namedOrFilled of ['[Fill Priority]', 'P2']) {
+      const preserved = structuredClone(run);
+      preserved.pack!.exercise.instructions = [worksheet.replace('| [ ] |', `| ${namedOrFilled} |`)];
+      const preservedBlocks = packExportBlocks(preserved);
+      assert.equal(preservedBlocks.some(block => block.text === 'Participant worksheet'), false);
+      assert.deepEqual(preservedBlocks.find(block => block.kind === 'table')!.table!.rows[0], ['Aster', namedOrFilled, '[]', '[  ]', '[ ]'], 'Named placeholders and partially completed rows remain untouched.');
+    }
+    const answerTable = structuredClone(run);
+    answerTable.pack!.exercise.instructions = ['Complete the response template.'];
+    answerTable.pack!.exercise.sampleResponse = worksheet;
+    const answerBlocks = packExportBlocks(answerTable);
+    assert.equal(answerBlocks.some(block => block.text === 'Participant worksheet'), false, 'Answer tables are not relabeled as participant worksheets.');
+    assert.equal(answerBlocks.find(block => block.kind === 'table')!.table!.rows[0][1], '[ ]');
+    const [pdf, docx] = await Promise.all([packPdf(run), packDocx(run)]);
+    const zip = await JSZip.loadAsync(docx, { checkCRC32: true });
+    const documentXml = await zip.file('word/document.xml')!.async('string');
+    const instructionsXml = documentXml.split('>Instructions</w:t>')[1].split('>Sample response</w:t>')[0];
+    assert.equal((instructionsXml.match(/<w:numPr>/g) ?? []).length, 4);
+    assert.ok(xmlText(instructionsXml).includes('Participant worksheet'));
+    const worksheetXml = [...instructionsXml.matchAll(/<w:tbl>[\s\S]*?<\/w:tbl>/g)][0][0];
+    const wordRows = [...worksheetXml.matchAll(/<w:tr>[\s\S]*?<\/w:tr>/g)].map(match => [...match[0].matchAll(/<w:tc>[\s\S]*?<\/w:tc>/g)].map(cell => xmlText(cell[0]).trim()));
+    assert.deepEqual(wordRows, [table.headers, ...table.rows], 'Word contains real blank editable cells.');
+    const parser = new PDFParse({ data: pdf, isEvalSupported: false, disableFontFace: true, useSystemFonts: false });
+    try {
+      const result = await parser.getText();
+      const pages = result.pages.map(page => page.text.replace(/Workshop Prep Agent · Human review required · \d+ \/ \d+/g, '').trim());
+      assert.ok(pages.some(page => page.includes('Participant worksheet') && page.includes('Sample response')), 'Worked answers start in the available space below the worksheet.');
+      for (const block of blocks.filter(block => ['heading', 'subheading'].includes(block.kind))) {
+        const page = pages.find(text => text.includes(block.text));
+        assert.ok(page, `PDF retains heading ${block.text}.`);
+        assert.ok(page.slice(page.indexOf(block.text) + block.text.length).trim().length > 0, `Heading ${block.text} has following content on the same page.`);
+      }
+      const allText = pages.join('\n');
+      assert.ok(normalized(allText).includes(normalized(run.pack!.exercise.sampleResponse!)), 'All worked answers remain complete after page reflow.');
+      assert.doesNotMatch(allText, /\[\s*\]/);
+      assert.doesNotMatch(allText, /^\s*\d+\.\s*$/m, 'PDF has no bare instruction number.');
+      assert.ok(allText.includes('4. Compare the completed responses.'));
+    } finally { await parser.destroy(); }
+    assert.equal(JSON.stringify(run), before);
+    assert.equal(packMarkdown(run), markdownBefore);
+    assert.ok(markdownBefore.includes(`4. ${worksheet}`), 'Saved Markdown numbering and placeholders are preserved.');
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});

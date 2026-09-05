@@ -39,15 +39,16 @@ export async function packPdf(run: Run): Promise<Buffer> {
     const after = block.kind === 'title' ? 10 : heading ? 6 : block.kind === 'timeline' ? 8 : block.kind === 'meta' || block.kind === 'source' ? 3 : 5;
     return { heading, size, listed, inset, width, text, height, after };
   };
-  const groupHeight = (start: number) => {
-    let height = 0;
-    for (let index = start; index < blocks.length; index++) {
-      const current = blocks[index];
-      const layout = geometry(current);
-      height += (layout.heading ? 10 : 0) + layout.height + layout.after;
-      if (!current.keepWithNext) break;
-    }
-    return height;
+  const groupHeight = (start: number, preserveBlock = false): number => {
+    const current = blocks[start];
+    if (!current) return 0;
+    const layout = geometry(current);
+    const flowing = !preserveBlock && !current.keepWithNext && ['paragraph', 'bullet', 'number', 'meta', 'source'].includes(current.kind);
+    const contentHeight = flowing ? Math.min(layout.height, layout.size * 3.5) : layout.height;
+    const height = (layout.heading ? 10 : 0) + contentHeight + layout.after;
+    if (!current.keepWithNext && !layout.heading) return height;
+    const followingSpace = layout.heading ? current.minimumFollowingSpace ?? (current.kind === 'heading' ? 72 : 32) : 0;
+    return height + Math.max(followingSpace, groupHeight(start + 1, preserveBlock || Boolean(current.keepWithNext)));
   };
   for (const [index, block] of blocks.entries()) {
     const layout = geometry(block);
@@ -55,7 +56,11 @@ export async function packPdf(run: Run): Promise<Buffer> {
     if (block.pageBreakBefore) doc.addPage();
     const keptHeight = groupHeight(index);
     const pageCapacity = doc.page.height - 108;
-    if (keptHeight <= pageCapacity && doc.y + keptHeight > doc.page.height - 54) doc.addPage();
+    // If a heading and its text exceed a page together, let the text flow from
+    // that heading instead of moving the paragraph and leaving its heading behind.
+    const followsOversizedHeading = index > 0 && ['title', 'heading', 'subheading'].includes(blocks[index - 1].kind)
+      && groupHeight(index - 1) > pageCapacity;
+    if (!followsOversizedHeading && keptHeight <= pageCapacity && doc.y + keptHeight > doc.page.height - 54) doc.addPage();
     doc.font(heading ? 'Bold' : 'Body').fontSize(size).fillColor(block.kind === 'title' ? '#3D235A' : block.kind === 'quote' || block.kind === 'source' ? '#51555C' : '#22262B');
     const before = heading && doc.y > 54 ? 10 : 0;
     const followingSpace = block.minimumFollowingSpace ?? (block.kind === 'heading' ? 72 : 32);

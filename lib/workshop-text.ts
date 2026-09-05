@@ -2,6 +2,17 @@ export type WorkshopTextBlock =
   | { kind: 'paragraph'; text: string }
   | { kind: 'table'; headers: string[]; rows: string[][] };
 
+/** Only blank response columns indicate a participant worksheet, not a filled answer table. */
+export function isBlankWorksheetTable(table: { headers: string[]; rows: string[][] }): boolean {
+  return table.headers.length > 1 && table.rows.length > 0
+    && table.rows.every(row => row.length === table.headers.length
+      && row.slice(1).every(cell => !cell.trim() || /^\[\s*\]$/.test(cell.trim())));
+}
+
+export function worksheetCellText(text: string): string {
+  return /^\[\s*\]$/.test(text.trim()) ? '' : text;
+}
+
 const escapedBreak = /\\r\\n|\\n|\\r/g;
 const structuredEscapedBreak = /(?:\\r\\n|\\n|\\r)(?:(?:\\r\\n|\\n|\\r)|[ \t]*(?:[-*•]|\d+[.)]|\|)[ \t])/;
 

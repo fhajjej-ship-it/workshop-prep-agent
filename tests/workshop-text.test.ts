@@ -3,7 +3,7 @@ import test from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import WorkshopText from '../app/components/WorkshopText';
-import { parseWorkshopText, normalizeWorkshopText } from '../lib/workshop-text';
+import { isBlankWorksheetTable, parseWorkshopText, normalizeWorkshopText } from '../lib/workshop-text';
 
 const material = { id: 'source-1234-5678', title: 'Help desk practice guide', content: 'Reference text.' };
 const worksheet = `Complete all five fields. [${material.id}]
@@ -61,4 +61,33 @@ test('history previews resolve source titles and render supplied markup as inert
   assert.match(html, /\[Fill Owner\]/);
   assert.match(html, /&lt;script&gt;/);
   assert.doesNotMatch(html, /<script>/);
+});
+
+test('participant worksheets explain the blank cells without changing the saved instructions', () => {
+  const text = '| Ticket | Priority | Owner | Next action | Reason |\n| --- | --- | --- | --- | --- |\n'
+    + ['Aster', 'Beacon', 'Cedar', 'Dune'].map(name => `| ${name} | [ ] | [] | [  ] | |`).join('\n');
+  const before = parseWorkshopText(text);
+  const html = renderToStaticMarkup(createElement(WorkshopText, { text, materials: [], participantWorksheet: true }));
+  assert.match(html, /<caption[^>]*><strong>Participant worksheet<\/strong>/);
+  assert.match(html, /Complete during the exercise\. Download Word to fill it in, or PDF to print it\./);
+  assert.equal((html.match(/<td>/g) ?? []).length, 20);
+  assert.doesNotMatch(html, /\[\s*\]/);
+  for (const name of ['Aster', 'Beacon', 'Cedar', 'Dune']) assert.match(html, new RegExp(`>${name}<`));
+  assert.deepEqual(parseWorkshopText(text), before, 'Rendering preserves the original saved placeholders.');
+  const ordinaryTable = renderToStaticMarkup(createElement(WorkshopText, { text, materials: [] }));
+  assert.doesNotMatch(ordinaryTable, /Participant worksheet/);
+  assert.match(ordinaryTable, /\[ \]/, 'Only exercise instruction tables receive worksheet presentation.');
+});
+
+test('worksheet presentation preserves filled answers, named prompts and checkbox-like data', () => {
+  for (const response of ['P2', '[Fill Priority]', '[x]']) {
+    const table = { headers: ['Ticket', 'Priority', 'Owner'], rows: [['Cedar', response, '[ ]']] };
+    assert.equal(isBlankWorksheetTable(table), false);
+    const text = `| Ticket | Priority | Owner |\n| --- | --- | --- |\n| Cedar | ${response} | [ ] |`;
+    const html = renderToStaticMarkup(createElement(WorkshopText, { text, materials: [], participantWorksheet: true }));
+    assert.doesNotMatch(html, /Participant worksheet/);
+    assert.ok(html.includes(response));
+    assert.match(html, /\[ \]/);
+  }
+  assert.equal(isBlankWorksheetTable({ headers: ['Ticket', 'Priority'], rows: [['Dune', '']] }), true);
 });

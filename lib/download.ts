@@ -1,6 +1,6 @@
 import type { Run } from './types';
 import { getRunMaterials, usesExampleMaterials } from './materials';
-import { parseWorkshopText } from './workshop-text';
+import { isBlankWorksheetTable, parseWorkshopText, worksheetCellText } from './workshop-text';
 
 export function packProvenance(run: Run) {
   const examples = usesExampleMaterials(getRunMaterials(run));
@@ -44,7 +44,7 @@ export function packExportBlocks(run: Run): ExportBlock[] {
       .replace(new RegExp(`\\b(?:source-)?${id.replace(/^source-/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), title);
     return output.replace(/(?:source-)?[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi, 'Source reference');
   };
-  const add = (kind: ExportBlock['kind'], text: string, options: Partial<ExportBlock> = {}) => {
+  const add = (kind: ExportBlock['kind'], text: string, options: Partial<ExportBlock> = {}, participantWorksheet = false) => {
     const readable = readableReferences(text);
     const parts = parseWorkshopText(documentBlockContent({ kind, text: readable }));
     if (!parts.some(part => part.kind === 'table')) {
@@ -52,14 +52,24 @@ export function packExportBlocks(run: Run): ExportBlock[] {
       return;
     }
     const listed = kind === 'number' || kind === 'bullet';
-    if (listed && parts[0].kind === 'table') blocks.push({ kind, text: '', ...options, keepWithNext: true });
+    let hasListText = false;
     parts.forEach((part, index) => {
-      if (part.kind === 'table') blocks.push({ kind: 'table', text: [part.headers, ...part.rows].map(row => row.join('\t')).join('\n'), table: part, listContinuation: listed });
-      else blocks.push({
-        ...options, kind: listed && index > 0 ? 'paragraph' : kind, text: part.text,
-        listContinuation: listed && index > 0,
-        keepWithNext: parts[index + 1]?.kind === 'table' || options.keepWithNext,
-      });
+      if (part.kind === 'table') {
+        const blankWorksheet = participantWorksheet && isBlankWorksheetTable(part);
+        const table = blankWorksheet ? { headers: part.headers, rows: part.rows.map(row => row.map((cell, column) => column > 0 ? worksheetCellText(cell) : cell)) } : part;
+        if (blankWorksheet) {
+          blocks.push({ kind: 'subheading', text: 'Participant worksheet', keepWithNext: true, listContinuation: listed });
+          blocks.push({ kind: 'paragraph', text: 'Complete during the exercise.', keepWithNext: true, listContinuation: listed });
+        }
+        blocks.push({ kind: 'table', text: [table.headers, ...table.rows].map(row => row.join('\t')).join('\n'), table, listContinuation: listed });
+      } else {
+        blocks.push({
+          ...options, kind: listed && hasListText ? 'paragraph' : kind, text: part.text,
+          listContinuation: listed && hasListText,
+          keepWithNext: parts[index + 1]?.kind === 'table' || options.keepWithNext,
+        });
+        hasListText = true;
+      }
     });
   };
   const paragraph = (text: string) => add('paragraph', text);
@@ -101,7 +111,12 @@ export function packExportBlocks(run: Run): ExportBlock[] {
   if (pack.exercise.scenario) { add('subheading', 'Scenario and input'); paragraph(pack.exercise.scenario); }
   if (pack.exercise.expectedOutput) { add('subheading', 'Expected output'); paragraph(pack.exercise.expectedOutput); }
   add('subheading', 'Instructions');
-  pack.exercise.instructions.forEach((text, index) => add('number', text, { number: index + 1 }));
+  let instructionNumber = 1;
+  pack.exercise.instructions.forEach(text => {
+    const start = blocks.length;
+    add('number', text, { number: instructionNumber }, true);
+    if (blocks.slice(start).some(block => block.kind === 'number')) instructionNumber++;
+  });
   if (pack.exercise.sampleResponse) { add('subheading', 'Sample response'); paragraph(pack.exercise.sampleResponse); }
   add('subheading', 'Debrief');
   pack.exercise.debrief.forEach(text => add('bullet', text));

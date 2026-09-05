@@ -85,6 +85,9 @@
 .workshop-text-table{width:100%;min-width:540px;border-collapse:collapse;table-layout:fixed;text-align:left;font-size:12px;line-height:1.6}
 .workshop-text-table th,.workshop-text-table td{padding:12px;vertical-align:top;border-bottom:1px solid var(--line);border-right:1px solid var(--line);overflow-wrap:anywhere}
 .workshop-text-table th{background:var(--teal-soft);color:var(--ink);font-weight:600}
+.participant-worksheet-caption{padding:16px 12px;text-align:left;border-bottom:1px solid var(--line);white-space:normal}
+.participant-worksheet-caption strong{display:block;color:var(--ink);font-size:14px;font-weight:600}
+.participant-worksheet-caption span{display:block;margin-top:4px;color:var(--muted);font-size:12px}
 .workshop-text-table th:last-child,.workshop-text-table td:last-child{border-right:0}
 .workshop-text-table tr:last-child td{border-bottom:0}
 .source-inline{display:inline;padding:2px 5px;white-space:normal;overflow-wrap:anywhere;line-height:inherit;font-size:inherit;vertical-align:baseline}
