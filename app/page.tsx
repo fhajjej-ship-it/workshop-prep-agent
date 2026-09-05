@@ -15,7 +15,8 @@ import WorkshopHome, { type WorkshopCardSummary } from './components/WorkshopHom
 import WorkshopManagementDialog, { type WorkshopAction } from './components/WorkshopManagementDialog';
 import './workshop-home.css';
 import './workshop-management.css';
-import GeneratedProse, { formatGeneratedProse } from './components/GeneratedProse';
+import GeneratedProse from './components/GeneratedProse';
+import WorkshopText, { CitedText } from './components/WorkshopText';
 import { currentRunStorageKey, hydrateRecentRuns, parseRecentRuns, preferredRunId, recentRunSummary, recentRunsStorageKey, rememberRecentRun, removeRecentWorkshop, workshopFamilyId, type RecentRunSummary } from '@/lib/recent-runs';
 import { canEditWorkshop, loadPendingWorkshopRevision, parseWorkshopDrafts, pendingWorkshopRevision, pendingWorkshopRevisionKey, workshopBriefDraft, workshopDraftKey, workshopDraftsStorageKey, workshopLocation, workshopPath, workshopPreparationRequest, type WorkshopBriefDraft, type WorkshopBriefDrafts, type WorkshopLocation } from '@/lib/workshop-navigation';
 
@@ -95,25 +96,18 @@ function Sources({ ids, materials, onRead }: { ids: string[] } & SourceActions) 
   })}</span>;
 }
 
-function CitedText({ text, materials, onRead }: { text: string } & SourceActions) {
-  return <span className="generated-prose">{formatGeneratedProse(text).split(/(\[[^\]]+\])/g).map((part, index) => {
-    const material = part.startsWith('[') ? materials.find(item => item.id === part.slice(1, -1)) : undefined;
-    return material ? <button type="button" key={index} className="source-tag source-link" data-source-id={material.id} onClick={event => { event.currentTarget.focus({ preventScroll: true }); onRead(material); }} aria-label={`Read source: ${material.title}`}>{material.id.startsWith('source-') ? material.title : part}</button> : part;
-  })}</span>;
-}
-
 function PackContent({ pack, tab, run, materials, onRead }: { pack: WorkshopPack; tab: PackTab; run: PublicRun } & SourceActions) {
   if (tab === 'exercise') return <div className="pack-section"><div className="content-heading"><span className="eyebrow">Proposed workshop exercise{pack.exercise.durationMinutes ? ` · ${pack.exercise.durationMinutes} minutes` : ''}</span><h3><GeneratedProse text={pack.exercise.title} /></h3><Sources ids={pack.exercise.sourceIds} materials={materials} onRead={onRead} /></div>
-    {pack.exercise.scenario && <div className="exercise-context"><h4>Participant scenario</h4><p><CitedText text={pack.exercise.scenario} materials={materials} onRead={onRead} /></p></div>}
-    {pack.exercise.expectedOutput && <div className="exercise-context"><h4>What participants should produce</h4><p><GeneratedProse text={pack.exercise.expectedOutput} /></p></div>}
-    <h4>Instructions</h4><ol className="instruction-list">{pack.exercise.instructions.map((item, index) => <li key={`${index}-${item}`}><GeneratedProse text={item} /></li>)}</ol>
-    {pack.exercise.sampleResponse && <div className="exercise-sample"><h4>Illustrative participant response</h4><p><GeneratedProse text={pack.exercise.sampleResponse} /></p></div>}
-    <div className="debrief"><h4>Bring the room back together</h4><ul>{pack.exercise.debrief.map((item, index) => <li key={`${index}-${item}`}><GeneratedProse text={item} /></li>)}</ul></div></div>;
-  if (tab === 'notes') return <div className="pack-section"><div className="content-heading"><span className="eyebrow">Before you lead</span><h3>Facilitator notes</h3></div><ul className="notes-list">{pack.facilitatorNotes.map((note, index) => <li key={`${index}-${note}`}><span className="note-index">{String(index + 1).padStart(2, '0')}</span><p><CitedText text={note} materials={materials} onRead={onRead} /></p></li>)}</ul></div>;
+    {pack.exercise.scenario && <div className="exercise-context"><h4>Participant scenario</h4><WorkshopText text={pack.exercise.scenario} materials={materials} onRead={onRead} /></div>}
+    {pack.exercise.expectedOutput && <div className="exercise-context"><h4>What participants should produce</h4><WorkshopText text={pack.exercise.expectedOutput} materials={materials} onRead={onRead} /></div>}
+    <h4>Instructions</h4><ol className="instruction-list">{pack.exercise.instructions.map((item, index) => <li key={`${index}-${item}`}><WorkshopText text={item} materials={materials} onRead={onRead} /></li>)}</ol>
+    {pack.exercise.sampleResponse && <div className="exercise-sample"><h4>Illustrative participant response</h4><WorkshopText text={pack.exercise.sampleResponse} materials={materials} onRead={onRead} /></div>}
+    <div className="debrief"><h4>Bring the room back together</h4><ul>{pack.exercise.debrief.map((item, index) => <li key={`${index}-${item}`}><WorkshopText text={item} materials={materials} onRead={onRead} /></li>)}</ul></div></div>;
+  if (tab === 'notes') return <div className="pack-section"><div className="content-heading"><span className="eyebrow">Before you lead</span><h3>Facilitator notes</h3></div><ul className="notes-list">{pack.facilitatorNotes.map((note, index) => <li key={`${index}-${note}`}><span className="note-index">{String(index + 1).padStart(2, '0')}</span><WorkshopText text={note} materials={materials} onRead={onRead} /></li>)}</ul></div>;
   if (tab === 'sources') return <div className="pack-section"><div className="content-heading"><span className="eyebrow">Keep the context close</span><h3>Sources used in this pack</h3><p className="quiet">Open a reference to read the source text saved with this workshop.</p></div><ul className="source-list">{pack.sources.map(source => {
     const material = materials.find(item => item.id === source.id);
     return <li key={source.id} data-source-id={source.id}><span className="source-document" aria-hidden="true"><FileText size={16} /></span><div><Sources ids={[source.id]} materials={materials} onRead={onRead} /><h4>{material ? <button type="button" className="source-title-link" onClick={event => { event.currentTarget.focus({ preventScroll: true }); onRead(material); }}>{source.title}<Arrow small /></button> : source.title}</h4></div></li>;
-  })}</ul>{pack.sourceClaims && <div className="source-claims"><h4>Recorded source claims</h4><p className="quiet">Check these claims against the quoted passages. The agenda and exercise are proposed workshop design.</p>{pack.sourceClaims.length ? <ul>{pack.sourceClaims.map((claim, index) => <li key={`${claim.sourceId}-${index}`}><p><GeneratedProse text={claim.claim} /></p><blockquote>{claim.quote}</blockquote><Sources ids={[claim.sourceId]} materials={materials} onRead={onRead} /></li>)}</ul> : <p className="quiet">No factual source claims were recorded for this pack.</p>}</div>}</div>;
+  })}</ul>{pack.sourceClaims && <div className="source-claims"><h4>Recorded source claims</h4><p className="quiet">Check these claims against the quoted passages. The agenda and exercise are proposed workshop design.</p>{pack.sourceClaims.length ? <ul>{pack.sourceClaims.map((claim, index) => <li key={`${claim.sourceId}-${index}`}><WorkshopText text={claim.claim} materials={materials} onRead={onRead} /><blockquote>{claim.quote}</blockquote><Sources ids={[claim.sourceId]} materials={materials} onRead={onRead} /></li>)}</ul> : <p className="quiet">No factual source claims were recorded for this pack.</p>}</div>}</div>;
   let elapsed = 0;
   const schedule = pack.agenda.map(item => {
     const start = elapsed;
@@ -127,7 +121,7 @@ function PackContent({ pack, tab, run, materials, onRead }: { pack: WorkshopPack
     <SessionTimeline key={`${run.id}-${run.revision}`} agenda={pack.agenda} />
     <ol className="agenda-list">{schedule.map((item, index) => <li key={`${index}-${item.title}`}>
       <div className="agenda-time"><strong>{minute(item.start)}—{minute(item.end)}</strong><span>minutes</span></div>
-      <div className="agenda-item"><h3><span className={`agenda-marker segment-${index % 5}`} /><GeneratedProse text={item.title} /></h3><p><GeneratedProse text={item.activity} /></p><Sources ids={item.sourceIds} materials={materials} onRead={onRead} /></div>
+      <div className="agenda-item"><h3><span className={`agenda-marker segment-${index % 5}`} /><GeneratedProse text={item.title} /></h3><WorkshopText text={item.activity} materials={materials} onRead={onRead} /><Sources ids={item.sourceIds} materials={materials} onRead={onRead} /></div>
     </li>)}</ol>
   </div>;
 
@@ -702,8 +696,8 @@ export default function Home() {
         {run && !busy && run.status === 'ready' && !modeMismatch && <div className="resume-panel"><p>This saved run is ready to continue.</p><button type="button" className="primary-button" onClick={() => void resume()}>Resume preparation<Arrow small /></button></div>}
       </AgentWork>}
       {run?.pack && !starting ? <>
-        {!complete && <><div className="draft-so-far"><h3>Draft so far</h3><span>Draft {run.revision} · Provisional until checks finish</span></div><div className="pack-title"><h3><GeneratedProse text={run.pack.title} /></h3><p><GeneratedProse text={run.pack.outcome} /></p></div></>}
-        {complete && <div className="result-summary"><h2 id="result-heading">Your workshop pack</h2><span className="work-label">Workshop goal</span><p className="pack-outcome"><GeneratedProse text={run.pack.outcome} /></p></div>}
+        {!complete && <><div className="draft-so-far"><h3>Draft so far</h3><span>Draft {run.revision} · Provisional until checks finish</span></div><div className="pack-title"><h3><GeneratedProse text={run.pack.title} /></h3><p><CitedText text={run.pack.outcome} materials={runMaterials} onRead={setSelectedMaterial} /></p></div></>}
+        {complete && <div className="result-summary"><h2 id="result-heading">Your workshop pack</h2><span className="work-label">Workshop goal</span><p className="pack-outcome"><CitedText text={run.pack.outcome} materials={runMaterials} onRead={setSelectedMaterial} /></p></div>}
         {run.copiedFrom && <div className="content-review-note"><p>Copied from <GeneratedProse text={run.copiedFrom.title} />. Content and checks were copied from that saved version; no new preparation was run.</p></div>}
         {revisionSummary}
         <div className="validation-bar"><span className={`validation-result ${run.validation?.valid ? 'passed' : 'pending'}`}><span aria-hidden="true">{run.validation?.valid ? <CircleCheck size={12} /> : <CircleDot size={12} />}</span>{run.validation?.valid ? 'Timing & reference checks passed' : run.validation ? 'Correction needed' : 'Awaiting checks'}</span><span>{totalMinutes} / {run.brief.durationMinutes} min</span>{run.revision > 0 && <span>Draft {run.revision}</span>}</div>

@@ -189,6 +189,72 @@ test('download route keeps completion/review gates, MIME types and format errors
   }
 });
 
+test('worksheet tables retain editable cells, numbered instructions, and complete PDF rows across pages', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'workshop-table-export-'));
+  try {
+    const run = await completedRun(new LocalRunStore(directory));
+    const headers = ['Ticket', 'Priority', 'Owner', 'Next action', 'Reason'];
+    const rows = Array.from({ length: 13 }, (_, index) => [
+      `Case ${String(index + 1).padStart(2, '0')}`, index % 2 ? 'P2' : 'P1', `Coordinator ${index + 1}`,
+      `Record affected users, check the workaround, and request a restoration update for case ${index + 1}.`,
+      index === 4
+        ? `${Array.from({ length: 12 }, (_, sentence) => `Evidence ${String(sentence + 1).padStart(2, '0')}: The formatted export fails for the reported ticket although CSV export works.`).join(' ')} END OF EXTENDED CELL.`
+        : `Case ${index + 1} follows the policy in [${fixtureMaterials[0].id}].`,
+    ]);
+    const worksheet = ['Complete each field before the debrief.', '', `| ${headers.join(' | ')} |`, '| :--- | --- | --- | --- | --- |', ...rows.map(row => `| ${row.join(' | ')} |`), '', 'After the worksheet, compare every entry with the worked answer.'].join('\n');
+    run.pack!.exercise.instructions = ['Read the ticket facts.', worksheet, 'Agree on one final answer.'];
+    const before = JSON.stringify(run);
+    const markdownBefore = packMarkdown(run);
+    const blocks = packExportBlocks(run);
+    assert.deepEqual(blocks.filter(block => block.kind === 'number').map(block => [block.number, block.text]), [
+      [1, 'Read the ticket facts.'], [2, 'Complete each field before the debrief.'], [3, 'Agree on one final answer.'],
+    ], 'One native number is retained for each original instruction.');
+    const tableBlock = blocks.find(block => block.kind === 'table');
+    assert.ok(tableBlock?.table);
+    assert.deepEqual(tableBlock.table.headers, headers);
+    assert.equal(tableBlock.table.rows.length, rows.length);
+    assert.ok(tableBlock.table.rows[0][4].includes(fixtureMaterials[0].title), 'Cell citations become readable source titles.');
+    assert.ok(blocks.some(block => block.kind === 'paragraph' && block.listContinuation && block.text.startsWith('After the worksheet')));
+    const [pdf, docx] = await Promise.all([packPdf(run), packDocx(run)]);
+    const zip = await JSZip.loadAsync(docx, { checkCRC32: true });
+    const documentXml = await zip.file('word/document.xml')!.async('string');
+    const worksheetXml = [...documentXml.matchAll(/<w:tbl>[\s\S]*?<\/w:tbl>/g)].find(match => xmlText(match[0]).startsWith('Ticket'))?.[0];
+    assert.ok(worksheetXml, 'The worksheet is a native Word table.');
+    assert.match(worksheetXml, /<w:tblHeader\/>/, 'The Word header repeats when the table spans pages.');
+    const wordRows = [...worksheetXml.matchAll(/<w:tr>[\s\S]*?<\/w:tr>/g)].map(match => [...match[0].matchAll(/<w:tc>[\s\S]*?<\/w:tc>/g)].map(cell => xmlText(cell[0]).trim()));
+    assert.deepEqual(wordRows, [tableBlock.table.headers, ...tableBlock.table.rows], 'Every worksheet cell stays editable and complete.');
+    const instructionsXml = documentXml.split('>Instructions</w:t>')[1].split('>Sample response</w:t>')[0];
+    assert.equal((instructionsXml.match(/<w:numPr>/g) ?? []).length, 3, 'Continuation prose and table cells do not advance the instruction list.');
+    const parser = new PDFParse({ data: pdf, isEvalSupported: false, disableFontFace: true, useSystemFonts: false });
+    try {
+      const result = await parser.getText();
+      const worksheetPages = result.pages.filter(page => /Case \d{2}|Evidence \d{2}/.test(page.text));
+      assert.ok(worksheetPages.length >= 3, 'The long-cell fixture exercises multiple table page breaks.');
+      assert.ok(worksheetPages.length < 10, 'Table pagination remains bounded.');
+      for (const page of worksheetPages) {
+        for (const header of headers) assert.ok(page.text.includes(header), `Each table page repeats ${header}.`);
+      }
+      assert.doesNotMatch(result.text, /\|\s*:?-{3,}|\| Ticket \|/, 'PDF omits Markdown table syntax.');
+      assert.doesNotMatch(xmlText(documentXml), /\|\s*:?-{3,}|\| Ticket \|/, 'Word omits Markdown table syntax.');
+      // PDF extraction can interleave adjacent columns; unique phrases prove each cell survives.
+      for (let index = 0; index < rows.length; index++) {
+        assert.ok(result.text.includes(rows[index][0]), `PDF keeps ticket ${index + 1}.`);
+        assert.ok(result.text.includes(rows[index][2]), `PDF keeps owner ${index + 1}.`);
+        assert.ok(normalized(result.text).includes(`restoration update for case ${index + 1}.`), `PDF keeps the final action for case ${index + 1}.`);
+      }
+      for (let sentence = 1; sentence <= 12; sentence++) assert.ok(result.text.includes(`Evidence ${String(sentence).padStart(2, '0')}`), `PDF preserves long-cell sentence ${sentence}.`);
+      for (const text of ['END OF EXTENDED CELL.', '2. Complete each field', 'After the worksheet, compare every entry', '3. Agree on one final answer.', 'Source-supported claims', 'Quality and review']) {
+        assert.ok(normalized(result.text).includes(text), `PDF keeps ${text}.`);
+      }
+    } finally { await parser.destroy(); }
+    assert.equal(JSON.stringify(run), before, 'Rendering never mutates the saved run.');
+    assert.equal(packMarkdown(run), markdownBefore, 'Markdown output retains original table syntax and provenance.');
+    assert.ok(markdownBefore.includes(worksheet));
+    await mkdir(fixtureDirectory, { recursive: true });
+    await Promise.all([writeFile(path.join(fixtureDirectory, 'worksheet-pagination.pdf'), pdf), writeFile(path.join(fixtureDirectory, 'worksheet-pagination.docx'), docx)]);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
 test('historical packs export without changing their saved content', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'workshop-historical-export-'));
   const previousDirectory = process.cwd();
@@ -209,4 +275,22 @@ test('historical packs export without changing their saved content', async () =>
     process.chdir(previousDirectory); process.env = previousEnvironment;
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('PDF preserves an oversized header without trapping body rows in page creation', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'workshop-header-export-'));
+  try {
+    const run = await completedRun(new LocalRunStore(directory));
+    const longHeader = `${Array.from({ length: 65 }, (_, index) => `Header detail ${String(index + 1).padStart(2, '0')}.`).join(' ')} END OF HEADER.`;
+    run.pack!.exercise.instructions = [`| Ticket | Priority | Owner | Next action | ${longHeader} |\n| --- | --- | --- | --- | --- |\n| Aster | P1 | Incident lead | Restore service | Complete body after oversized header. |`];
+    const parser = new PDFParse({ data: await packPdf(run), isEvalSupported: false, disableFontFace: true, useSystemFonts: false });
+    try {
+      const result = await parser.getText();
+      assert.ok(result.total < 15, 'Oversized header pagination remains bounded.');
+      for (let index = 1; index <= 65; index++) assert.ok(normalized(result.text).includes(`Header detail ${String(index).padStart(2, '0')}.`));
+      assert.ok(normalized(result.text).includes('END OF HEADER.'));
+      assert.ok(normalized(result.text).includes('Complete body after oversized header.'));
+      assert.ok(result.text.includes('Quality and review'));
+    } finally { await parser.destroy(); }
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });

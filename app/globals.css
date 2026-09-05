@@ -73,3 +73,19 @@
 .revision-feedback{margin-top:17px}.revision-feedback label{display:block;margin-bottom:7px;font-size:13px;font-weight:600}.revision-feedback textarea{display:block;width:100%;padding:12px;margin-bottom:12px;border:1px solid var(--line);border-radius:7px;line-height:1.7;font-size:13px;color:var(--ink);background:#fbfcfd}.revision-feedback>.primary-button{width:auto;min-height:39px;font-size:12px;margin-top:16px}.revision-sources-toggle{display:flex;margin:10px 0}.revision-feedback .material-input{margin:12px 0 18px}
 .revision-progress{margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}.revision-progress>h3{font-size:15px}.revision-progress>p{font-size:12px;color:var(--muted);margin-top:5px}.revision-progress .agent-work{padding-left:0;padding-right:0}.revision-progress .content-review{margin-left:0;margin-right:0}.revision-summary>strong{display:block;margin:10px 0 4px;font-size:12px}.revision-summary>p{margin:7px 0;font-size:12px;line-height:1.75;white-space:pre-wrap}.revision-summary>.text-button{display:inline-block;font-size:12px;margin-top:5px}.revision-original{margin-top:9px}.revision-original .details-content{font-size:12px;line-height:1.8}.revision-original h4{margin:10px 0 6px}.revision-original ol,.revision-original ul{padding-left:20px}.revision-original li{margin:7px 0}
 @media(max-width:600px){.content-review,.content-review-note,.saved-clarification,.revision-summary{margin-left:18px;margin-right:18px;padding:13px}.workshop-revision{padding:18px}.clarification-answer,.revision-feedback textarea{font-size:16px}.exercise-sample{padding:14px}.revision-feedback>.primary-button{width:100%}}
+
+/* Generated workshop content: preserve wording while giving worksheets real structure. */
+.generated-prose{white-space:pre-wrap;overflow-wrap:anywhere}
+.workshop-prose{min-width:0;max-width:100%;line-height:inherit}
+.workshop-prose>p{margin:0 0 .8em;line-height:inherit}
+.workshop-prose>p:last-child{margin-bottom:0}
+.notes-list .workshop-prose{flex:1}
+.workshop-table-scroll{max-width:100%;overflow-x:auto;margin:16px 0;border:1px solid var(--line);border-radius:8px;overscroll-behavior-x:contain}
+.workshop-table-scroll:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+.workshop-text-table{width:100%;min-width:540px;border-collapse:collapse;table-layout:fixed;text-align:left;font-size:12px;line-height:1.6}
+.workshop-text-table th,.workshop-text-table td{padding:12px;vertical-align:top;border-bottom:1px solid var(--line);border-right:1px solid var(--line);overflow-wrap:anywhere}
+.workshop-text-table th{background:var(--teal-soft);color:var(--ink);font-weight:600}
+.workshop-text-table th:last-child,.workshop-text-table td:last-child{border-right:0}
+.workshop-text-table tr:last-child td{border-bottom:0}
+.source-inline{display:inline;padding:2px 5px;white-space:normal;overflow-wrap:anywhere;line-height:inherit;font-size:inherit;vertical-align:baseline}
+.source-inline-reference{color:var(--muted)}

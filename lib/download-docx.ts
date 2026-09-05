@@ -4,6 +4,26 @@ import type { Run } from './types';
 
 export async function packDocx(run: Run): Promise<Buffer> {
   const children = packExportBlocks(run).flatMap(block => {
+    if (block.kind === 'table' && block.table) {
+      const tableWidth = block.listContinuation ? 9266 : 9746;
+      const columnCount = block.table.headers.length;
+      const widths = block.table.headers.map((_, index) => Math.floor(tableWidth / columnCount) + (index < tableWidth % columnCount ? 1 : 0));
+      return [new Table({
+        width: { size: tableWidth, type: WidthType.DXA }, columnWidths: widths, layout: TableLayoutType.FIXED,
+        ...(block.listContinuation ? { indent: { size: 480, type: WidthType.DXA } } : {}),
+        rows: [block.table.headers, ...block.table.rows].map((row, rowIndex) => new TableRow({
+          tableHeader: rowIndex === 0, cantSplit: rowIndex === 0,
+          children: row.map((text, columnIndex) => new TableCell({
+            width: { size: widths[columnIndex], type: WidthType.DXA }, verticalAlign: VerticalAlign.TOP,
+            margins: { marginUnitType: WidthType.DXA, top: 100, bottom: 100, left: 100, right: 100 },
+            ...(rowIndex === 0 ? { shading: { fill: 'EAF0F3', type: ShadingType.CLEAR } } : {}),
+            children: [new Paragraph({ spacing: { after: 0, line: 240 }, children: text.split(/\r\n|\r|\n/).map((line, index) => new TextRun({
+              text: line, ...(index ? { break: 1 } : {}), bold: rowIndex === 0, size: 20, color: '22262B',
+            })) })],
+          })),
+        })),
+      }), new Paragraph({ spacing: { after: 50, line: 80 } })];
+    }
     if (block.kind === 'timeline' && block.timeline) {
       const tableWidth = 9746;
       let assignedWidth = 0;
@@ -34,7 +54,7 @@ export async function packDocx(run: Run): Promise<Buffer> {
     return [new Paragraph({
       heading, pageBreakBefore: block.pageBreakBefore, keepNext: Boolean(heading || block.keepWithNext),
       spacing: { before: heading ? 180 : 0, after: heading ? 110 : block.kind === 'meta' || block.kind === 'source' ? 50 : 90, line: 280 },
-      ...(block.kind === 'quote' ? { indent: { left: 240, right: 120 } } : {}),
+      ...(block.kind === 'quote' ? { indent: { left: 240, right: 120 } } : block.listContinuation ? { indent: { left: 480 } } : {}),
       ...(block.kind === 'bullet' ? { bullet: { level: 0 } } : {}),
       ...(block.kind === 'number' ? { numbering: { reference: 'workshop-numbering', level: 0 } } : {}),
       children: documentBlockContent(block).split(/\r\n|\r|\n/).map((text, index) => new TextRun({ text, ...(index ? { break: 1 } : {}),

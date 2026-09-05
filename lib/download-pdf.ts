@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import PDFDocument from 'pdfkit';
 import { documentBlockContent, documentBlockText, packExportBlocks } from './download';
+import { drawPdfTable, layoutPdfTable } from './download-pdf-table';
 import type { Run } from './types';
 
 export async function packPdf(run: Run): Promise<Buffer> {
@@ -27,12 +28,14 @@ export async function packPdf(run: Run): Promise<Buffer> {
     const heading = ['title', 'heading', 'subheading'].includes(block.kind);
     const size = block.kind === 'title' ? 25 : block.kind === 'heading' ? 16 : block.kind === 'subheading' ? 11.5 : block.kind === 'source' ? 9 : block.kind === 'timeline' ? 7.2 : 10.5;
     const listed = block.kind === 'bullet' || block.kind === 'number';
-    const inset = block.kind === 'quote' ? 12 : 0;
+    const inset = block.kind === 'quote' ? 12 : block.listContinuation ? 18 : 0;
     doc.font(heading ? 'Bold' : 'Body').fontSize(size);
     const width = doc.page.width - 108 - inset - (listed ? 18 : 0);
     const text = listed ? documentBlockContent(block) : documentBlockText(block);
     const textHeight = doc.heightOfString(text, { width, lineGap: block.kind === 'timeline' ? 1 : 3 });
-    const height = block.kind === 'timeline' ? 61 + textHeight : textHeight;
+    const tableLayout = block.table ? layoutPdfTable(doc, block.table, width) : undefined;
+    const height = tableLayout ? tableLayout.rowHeight(tableLayout.headers) + (tableLayout.rows[0] ? Math.min(tableLayout.rowHeight(tableLayout.rows[0]), 60) : 0)
+      : block.kind === 'timeline' ? 61 + textHeight : listed ? Math.max(textHeight, doc.currentLineHeight(true)) : textHeight;
     const after = block.kind === 'title' ? 10 : heading ? 6 : block.kind === 'timeline' ? 8 : block.kind === 'meta' || block.kind === 'source' ? 3 : 5;
     return { heading, size, listed, inset, width, text, height, after };
   };
@@ -58,7 +61,9 @@ export async function packPdf(run: Run): Promise<Buffer> {
     const followingSpace = block.minimumFollowingSpace ?? (block.kind === 'heading' ? 72 : 32);
     if (heading && doc.y + before + height + followingSpace > doc.page.height - 54) doc.addPage();
     else doc.y += before;
-    if (block.kind === 'timeline' && block.timeline) {
+    if (block.kind === 'table' && block.table) {
+      drawPdfTable(doc, block.table, 54 + inset, width);
+    } else if (block.kind === 'timeline' && block.timeline) {
       const y = doc.y;
       const barY = y + 17;
       const barHeight = 28;
@@ -98,6 +103,7 @@ export async function packPdf(run: Run): Promise<Buffer> {
       doc.text(block.kind === 'bullet' ? '•' : `${block.number}.`, 54, y, { width: 16, lineBreak: false });
       doc.y = y;
       doc.text(text, 72, y, { width, lineGap: 3, paragraphGap: 3 });
+      if (!text.trim()) doc.y = y + doc.currentLineHeight(true);
     } else doc.text(text, 54 + inset, doc.y, { width, lineGap: 3, paragraphGap: 3 });
     if (block.kind === 'title') {
       doc.moveTo(54, doc.y + 2).lineTo(118, doc.y + 2).lineWidth(2).strokeColor('#A975CF').stroke();

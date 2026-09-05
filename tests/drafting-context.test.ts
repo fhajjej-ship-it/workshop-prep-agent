@@ -74,7 +74,15 @@ test('drafting and review share the saved creation date across a clarification r
     assert.equal(reviews[0].brief.objective, brief.objective);
     assert.equal(finished.createdAt, run.createdAt);
     assert.ok(captured.instructions.length > 1);
-    for (const instructions of captured.instructions) assert.match(instructions, /Preparation reference date: 2026-09-01/);
+    for (const instructions of captured.instructions) {
+      assert.match(instructions, /Preparation reference date: 2026-09-01/);
+      assert.match(instructions, /chronology-only metadata, not evidence of a scheduled workshop, follow-up or commitment/);
+      assert.match(instructions, /Never copy it into a scheduled\/committed action or invent a date because a source says "schedule follow-up"/);
+      assert.match(instructions, /If no date is supplied or requested, preserve that undated action/);
+      assert.match(instructions, /calculations grounded in a supplied date and requested interval/);
+      assert.match(instructions, /When the user requests illustrative scheduling proposals, clearly label any proposed date as illustrative and awaiting agreement/);
+      assert.match(instructions, /Every dated planned follow-up must satisfy baseline <= follow-up date <= supplied deadline/);
+    }
     for (const prompt of captured.prompts) assert.ok(prompt.includes(brief.objective));
   });
 });
@@ -105,7 +113,11 @@ test('revision drafting and review use the new record date while preserving the 
     assert.equal(reviews[0].referenceDate, '2026-09-02');
     assert.equal(reviews[0].feedback, feedback);
     assert.deepEqual(reviews[0].parentPack, original.pack);
-    for (const instructions of captured.instructions) assert.match(instructions, /Preparation reference date: 2026-09-02/);
+    for (const instructions of captured.instructions) {
+      assert.match(instructions, /Preparation reference date: 2026-09-02/);
+      assert.match(instructions, /latest applicable explicit workshop date from the current brief, clarification or revision feedback/);
+      assert.match(instructions, /The current brief remains authoritative over conflicting parent content/);
+    }
     for (const prompt of captured.prompts) assert.ok(prompt.includes(feedback));
   });
 });

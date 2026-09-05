@@ -1,5 +1,6 @@
 import type { Run } from './types';
 import { getRunMaterials, usesExampleMaterials } from './materials';
+import { parseWorkshopText } from './workshop-text';
 
 export function packProvenance(run: Run) {
   const examples = usesExampleMaterials(getRunMaterials(run));
@@ -7,12 +8,14 @@ export function packProvenance(run: Run) {
 }
 
 export type ExportBlock = {
-  kind: 'title' | 'heading' | 'subheading' | 'paragraph' | 'quote' | 'bullet' | 'number' | 'meta' | 'source' | 'timeline';
+  kind: 'title' | 'heading' | 'subheading' | 'paragraph' | 'quote' | 'bullet' | 'number' | 'meta' | 'source' | 'timeline' | 'table';
   text: string;
   number?: number;
   pageBreakBefore?: boolean;
   keepWithNext?: boolean;
   minimumFollowingSpace?: number;
+  listContinuation?: boolean;
+  table?: { headers: string[]; rows: string[][] };
   timeline?: {
     totalMinutes: number;
     segments: { number: number; minutes: number; start: number; end: number; color: string; textColor: string }[];
@@ -41,7 +44,24 @@ export function packExportBlocks(run: Run): ExportBlock[] {
       .replace(new RegExp(`\\b(?:source-)?${id.replace(/^source-/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), title);
     return output.replace(/(?:source-)?[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi, 'Source reference');
   };
-  const add = (kind: ExportBlock['kind'], text: string, options: Partial<ExportBlock> = {}) => blocks.push({ kind, text: readableReferences(text), ...options });
+  const add = (kind: ExportBlock['kind'], text: string, options: Partial<ExportBlock> = {}) => {
+    const readable = readableReferences(text);
+    const parts = parseWorkshopText(documentBlockContent({ kind, text: readable }));
+    if (!parts.some(part => part.kind === 'table')) {
+      blocks.push({ kind, text: readable, ...options });
+      return;
+    }
+    const listed = kind === 'number' || kind === 'bullet';
+    if (listed && parts[0].kind === 'table') blocks.push({ kind, text: '', ...options, keepWithNext: true });
+    parts.forEach((part, index) => {
+      if (part.kind === 'table') blocks.push({ kind: 'table', text: [part.headers, ...part.rows].map(row => row.join('\t')).join('\n'), table: part, listContinuation: listed });
+      else blocks.push({
+        ...options, kind: listed && index > 0 ? 'paragraph' : kind, text: part.text,
+        listContinuation: listed && index > 0,
+        keepWithNext: parts[index + 1]?.kind === 'table' || options.keepWithNext,
+      });
+    });
+  };
   const paragraph = (text: string) => add('paragraph', text);
   add('title', pack.title);
   add('quote', readerNotice);
