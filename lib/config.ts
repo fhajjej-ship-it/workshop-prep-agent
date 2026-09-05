@@ -21,7 +21,7 @@ export function getConfig(env: Record<string, string | undefined> = process.env)
   const blockers: string[] = [...storageConfig.blockers];
   if (env.WORKSHOP_MODE && !['test', 'live'].includes(env.WORKSHOP_MODE)) blockers.push('WORKSHOP_MODE must be test or live.');
   if (mode === 'live' && !env.GOOGLE_GENERATIVE_AI_API_KEY?.trim()) blockers.push('Live mode requires GOOGLE_GENERATIVE_AI_API_KEY in this project.');
-  if (mode === 'live' && env.VERCEL) blockers.push('Live model runs are enabled only on this local server.');
+  if (mode === 'live' && env.VERCEL && env.WORKSHOP_ALLOW_HOSTED_LIVE !== 'true') blockers.push('Live model runs on Vercel require WORKSHOP_ALLOW_HOSTED_LIVE=true.');
   if (mode === 'live' && env.WORKSHOP_MODEL && env.WORKSHOP_MODEL !== LIVE_MODEL) blockers.push(`This prototype supports only ${LIVE_MODEL}.`);
   return { mode, model: mode === 'live' ? LIVE_MODEL : null, storage: storageConfig.storage, ready: blockers.length === 0, blockers };
 }

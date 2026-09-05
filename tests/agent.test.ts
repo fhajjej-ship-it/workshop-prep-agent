@@ -76,6 +76,24 @@ test('live configuration never silently falls back and rejects unsupported model
   assert.match(getConfig({ WORKSHOP_MODE: 'live', GOOGLE_GENERATIVE_AI_API_KEY: 'test-placeholder', WORKSHOP_MODEL: 'unknown/model' }).blockers.join(), /supports only gemini-3.8-flash/);
 });
 
+test('Vercel live configuration requires explicit opt-in and configured Postgres storage', () => {
+  const hosted = {
+    VERCEL: '1', WORKSHOP_MODE: 'live', GOOGLE_GENERATIVE_AI_API_KEY: 'test-placeholder',
+    WORKSHOP_STORE: 'postgres', DATABASE_URL: 'postgresql://test:test@example.test/workshop',
+  };
+  for (const optIn of [undefined, '', 'false', '1', 'TRUE']) {
+    const blocked = getConfig({ ...hosted, WORKSHOP_ALLOW_HOSTED_LIVE: optIn });
+    assert.equal(blocked.ready, false);
+    assert.match(blocked.blockers.join(), /WORKSHOP_ALLOW_HOSTED_LIVE=true/);
+  }
+  const optedIn = { ...hosted, WORKSHOP_ALLOW_HOSTED_LIVE: 'true' };
+  assert.deepEqual(getConfig(optedIn), { mode: 'live', model: LIVE_MODEL, storage: 'postgres', ready: true, blockers: [] });
+  assert.match(getConfig({ ...optedIn, WORKSHOP_STORE: 'local' }).blockers.join(), /Local file storage is not durable on Vercel/);
+  assert.match(getConfig({ ...optedIn, DATABASE_URL: '' }).blockers.join(), /DATABASE_URL/);
+  assert.match(getConfig({ ...optedIn, GOOGLE_GENERATIVE_AI_API_KEY: '' }).blockers.join(), /GOOGLE_GENERATIVE_AI_API_KEY/);
+  assert.equal(getConfig({ ...hosted, WORKSHOP_MODE: 'test' }).ready, true);
+});
+
 test('provider failure stays live, persists failure and never invokes deterministic tools', async () => {
   await withStore(async store => {
     const liveConfig = { ...config, mode: 'live' as const, model: LIVE_MODEL };

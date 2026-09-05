@@ -38,7 +38,7 @@ test('native direct Google model is lazy and sends only the explicitly invoked m
   assert.equal(networkCalls, 1);
 });
 
-test('missing direct key and nonlocal configuration cannot invoke the native provider', t => {
+test('missing direct key and unapproved or invalid hosted configuration cannot invoke the native provider', t => {
   const originalEnvironment = process.env;
   t.after(() => { process.env = originalEnvironment; });
   let networkCalls = 0;
@@ -47,11 +47,18 @@ test('missing direct key and nonlocal configuration cannot invoke the native pro
     process.env = { ...environment, AI_GATEWAY_API_KEY: 'placeholder-gateway-key', GOOGLE_GENERATIVE_AI_API_KEY: key };
     assert.throws(createDirectGoogleModel, /requires GOOGLE_GENERATIVE_AI_API_KEY/);
   }
-  for (const override of [{ VERCEL: '1' }, { ...postgres, VERCEL: '1' }, { WORKSHOP_STORE: 'postgres' }, { WORKSHOP_MODE: 'test' }, { WORKSHOP_MODEL: 'unsupported' }]) {
+  for (const override of [
+    { VERCEL: '1' }, { ...postgres, VERCEL: '1' },
+    { VERCEL: '1', WORKSHOP_ALLOW_HOSTED_LIVE: 'true' },
+    { VERCEL: '1', WORKSHOP_ALLOW_HOSTED_LIVE: 'true', WORKSHOP_STORE: 'postgres' },
+    { WORKSHOP_STORE: 'postgres' }, { WORKSHOP_MODE: 'test' }, { WORKSHOP_MODEL: 'unsupported' },
+  ]) {
     process.env = { ...environment, ...override };
-    assert.throws(createDirectGoogleModel, /valid local live configuration/);
+    assert.throws(createDirectGoogleModel, /valid live configuration/);
   }
-  process.env = { ...environment, ...postgres };
-  assert.equal(createDirectGoogleModel().modelId, LIVE_MODEL);
+  for (const override of [postgres, { ...postgres, VERCEL: '1', WORKSHOP_ALLOW_HOSTED_LIVE: 'true' }]) {
+    process.env = { ...environment, ...override };
+    assert.equal(createDirectGoogleModel().modelId, LIVE_MODEL);
+  }
   assert.equal(networkCalls, 0);
 });

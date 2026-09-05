@@ -2,6 +2,8 @@
 
 ## GitHub checkpoint verification · 2026-09-05
 
+Subsequent production configuration adds an explicit hosted-live opt-in and selects Frankfurt for Vercel functions. The final configuration candidate passed **156 tests** and `npm run build -- --webpack` in an isolated copy without private environment files. The existing per-run limits and recovery behavior are unchanged. Production settings and the Git connection were configured separately; an application deployment and smoke result must be verified from its actual deployment receipt. Local logs: [production-candidate tests](.local/production-deploy/tests.log) and [build](.local/production-deploy/build.log).
+
 The current app includes supplied-material uploads and pasted text, content review and correction, PDF/Word exports, workshop cards and management, duplication, version history, and editing an existing brief and its sources through the workshop steps. Returning from the brief to **Workshop pack** does not regenerate the saved result.
 
 Verification on an isolated copy of the candidate source, without private environment files:

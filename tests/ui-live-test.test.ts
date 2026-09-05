@@ -37,14 +37,17 @@ async function fixture(fn: (directory: string) => Promise<void>) {
   }
 }
 
-test('normal local readiness needs no manifest and still rejects missing keys or nonlocal live configuration', async () => fixture(async () => {
+test('UI readiness supports approved hosted live mode and rejects missing keys or invalid storage', async () => fixture(async () => {
   assert.equal(getUiConfig().ready, true);
   assert.equal(getUiConfig({ ...process.env, WORKSHOP_UI_TEST_DIR: '/unused/old-allowance' }).ready, true);
   for (const override of [
     { VERCEL: '1' }, { WORKSHOP_STORE: 'postgres' }, { WORKSHOP_MODEL: 'another-model' },
     { GOOGLE_GENERATIVE_AI_API_KEY: '' }, { ...postgres, VERCEL: '1' },
+    { VERCEL: '1', WORKSHOP_ALLOW_HOSTED_LIVE: 'true' },
+    { VERCEL: '1', WORKSHOP_ALLOW_HOSTED_LIVE: 'true', WORKSHOP_STORE: 'postgres' },
   ]) assert.equal(getUiConfig({ ...process.env, ...override }).ready, false);
   assert.equal(getUiConfig({ ...process.env, ...postgres }).ready, true);
+  assert.equal(getUiConfig({ ...process.env, ...postgres, VERCEL: '1', WORKSHOP_ALLOW_HOSTED_LIVE: 'true' }).ready, true);
   assert.match(getUiConfig({ ...process.env, WORKSHOP_STORE: 'postgres' }).blockers.join(), /DATABASE_URL/);
   assert.equal(getUiConfig({ WORKSHOP_MODE: 'test', WORKSHOP_STORE: 'local' }).ready, true);
 }));
