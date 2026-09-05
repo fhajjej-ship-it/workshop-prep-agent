@@ -57,7 +57,7 @@ test('current action is persisted before each tool and cleared after pause, timi
 
     for (const [eventIndex, event] of finished.events.entries()) {
       const toolIndex = store.snapshots.findIndex(snapshot =>
-        snapshot.currentAction?.phase === 'tool' && snapshot.currentAction.tool === event.tool &&
+        snapshot.currentAction?.phase === (event.tool === 'review_content' ? 'review' : 'tool') && snapshot.currentAction.tool === event.tool &&
         snapshot.events.length === eventIndex);
       assert.ok(toolIndex >= 0, `${event.tool} must have a persisted start before its event`);
       const before = store.snapshots[toolIndex];
@@ -66,9 +66,15 @@ test('current action is persisted before each tool and cleared after pause, timi
       assert.ok(Number.isFinite(Date.parse(before.currentAction!.startedAt)));
       const modelIndex = store.snapshots.findIndex(snapshot =>
         snapshot.currentAction?.phase === 'model' && snapshot.steps === before.steps);
-      assert.ok(modelIndex >= 0 && modelIndex < toolIndex, 'Model start must precede tool start');
-      assert.equal(store.snapshots[modelIndex].currentAction?.tool, undefined);
-      assert.equal(store.snapshots[modelIndex].currentAction?.sourceId, undefined);
+      if (!['review_content', 'save_for_review'].includes(event.tool)) {
+        assert.ok(modelIndex >= 0 && modelIndex < toolIndex, 'Model start must precede planner tool start');
+        assert.equal(store.snapshots[modelIndex].currentAction?.tool, undefined);
+        assert.equal(store.snapshots[modelIndex].currentAction?.sourceId, undefined);
+      } else if (event.tool === 'review_content') {
+        assert.equal(before.validation?.valid, true, 'Review starts only after structural checks pass');
+      } else {
+        assert.equal(before.contentReview?.status, 'passed', 'Final save starts after review passes');
+      }
       const endIndex = store.snapshots.findIndex(snapshot => snapshot.events.some(saved => saved.id === event.id));
       assert.ok(endIndex > toolIndex);
       assert.equal(store.snapshots[endIndex].currentAction, null, 'Completed tool must clear its current action');

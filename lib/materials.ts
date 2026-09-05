@@ -1,7 +1,10 @@
+import type { Material, Run } from './types';
+
 /** Authored synthetic inputs, not evidence from a customer or training provider. */
-export const materials: { id: string; title: string; content: string }[] = [
+export const materials: Material[] = [
   {
     id: 'use-case-selection',
+    kind: 'example',
     title: 'Synthetic field note · Choosing a first AI use case',
     content: `SYNTHETIC WORKSHOP MATERIAL — created for this local demonstration.
 
@@ -13,6 +16,7 @@ Choose one small, reversible experiment. Record a baseline, an observable succes
   },
   {
     id: 'safe-experimentation',
+    kind: 'example',
     title: 'Synthetic checklist · A safe experiment boundary',
     content: `SYNTHETIC WORKSHOP MATERIAL — created for this local demonstration.
 
@@ -24,6 +28,7 @@ Define the human review point before testing: who checks the output, what makes 
   },
   {
     id: 'facilitation-guide',
+    kind: 'example',
     title: 'Synthetic facilitator guide · From discussion to a decision',
     content: `SYNTHETIC WORKSHOP MATERIAL — created for this local demonstration.
 
@@ -34,3 +39,13 @@ For an in-person session, use pairs and paper cards. For a remote session, use p
 Timebox framing, selection, practice and review. Include the exercise and its debrief in the agenda rather than adding them on top of the session duration. End with one proposed experiment, its owner, its success measure and an unresolved question. Ask: What would change your decision? What must a human check? What evidence is still missing?`,
   },
 ];
+
+/** Runs saved before material snapshots existed used the bundled examples. */
+export function getRunMaterials(run: Pick<Run, 'materials'>): Material[] {
+  return run.materials ?? materials;
+}
+
+export function usesExampleMaterials(sources: Material[]): boolean {
+  return sources.length > 0 && sources.every(source => materials.some(example =>
+    example.id === source.id && example.title === source.title && example.content === source.content));
+}

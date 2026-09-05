@@ -3,11 +3,12 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { test } from 'node:test';
 import { MockLanguageModelV4 } from 'ai/test';
-import { advanceRun, createRun, MAX_STEPS, readRun } from '../lib/agent';
+import { advanceRun, createRun, MAX_STEPS, readRun, RUN_TIMEOUT_MS } from '../lib/agent';
 import { getConfig, LIVE_MODEL } from '../lib/config';
 import { LocalRunStore, RunConflict } from '../lib/store';
 import { createTestPack } from '../lib/test-pack';
 import type { Brief } from '../lib/types';
+import { scriptedContentReviewer } from '../lib/content-review';
 
 const brief: Brief = {
   audience: '12 executive leaders exploring AI',
@@ -165,11 +166,7 @@ test('live draft schema feedback rejects the observed items wrapper, then permit
       } else if (calls === 6) {
         assert.equal((await store.read(run.id))?.validation, undefined);
         toolName = 'validate_pack'; input = {};
-      } else {
-        assert.equal(calls, 7);
-        assert.equal((await store.read(run.id))?.validation?.valid, true);
-        toolName = 'save_for_review'; input = {};
-      }
+      } else throw new Error('The passing reviewed pack should finalize without another planner call.');
       return {
         content: [{ type: 'tool-call', toolCallId: `draft-feedback-${calls}`, toolName, input: JSON.stringify(input) }],
         finishReason: { unified: 'tool-calls', raw: undefined },
@@ -177,15 +174,15 @@ test('live draft schema feedback rejects the observed items wrapper, then permit
         warnings: [],
       };
     } });
-    const finished = await advanceRun(run.id, store, undefined, { config: liveConfig, model });
+    const finished = await advanceRun(run.id, store, undefined, { config: liveConfig, model, reviewer: scriptedContentReviewer });
     assert.equal(finished.status, 'completed', finished.error ?? 'Corrected draft should finish');
-    assert.equal(calls, 7);
+    assert.equal(calls, 6);
     assert.equal(finished.steps, 7);
     assert.equal(finished.revision, 1);
     assert.deepEqual(finished.pack?.agenda, pack.agenda);
     assert.equal(finished.validation?.valid, true);
     assert.equal(finished.validation.totalMinutes, 30);
-    assert.deepEqual(finished.events.map(event => event.tool), ['read_material', 'read_material', 'read_material', 'draft_pack', 'validate_pack', 'save_for_review']);
+    assert.deepEqual(finished.events.map(event => event.tool), ['read_material', 'read_material', 'read_material', 'draft_pack', 'validate_pack', 'review_content', 'save_for_review']);
   });
 });
 
@@ -256,7 +253,7 @@ test('refresh resolves a stale interrupted request to a persisted failure withou
   await withStore(async (store, directory) => {
     const run = await createRun(brief, store, config);
     run.status = 'running';
-    run.updatedAt = new Date(Date.now() - 180_000).toISOString();
+    run.updatedAt = new Date(Date.now() - RUN_TIMEOUT_MS - 60_000).toISOString();
     await writeFile(path.join(directory, `${run.id}.json`), JSON.stringify(run));
     assert.equal((await readRun(run.id, store))?.status, 'failed');
     const saved = (await store.read(run.id))!;

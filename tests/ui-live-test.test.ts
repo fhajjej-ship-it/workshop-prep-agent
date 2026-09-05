@@ -5,10 +5,14 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { advanceUiRun, createUiRun, getUiConfig, readUiRun } from '../lib/ui-live-test';
 import { createTestPack } from '../lib/test-pack';
-import { PostgresRunStore } from '../lib/store';
+import { LocalRunStore, PostgresRunStore } from '../lib/store';
 import type { Brief, Run } from '../lib/types';
 import { GET as readRoute } from '../app/api/runs/[id]/route';
 import { GET as downloadRoute } from '../app/api/runs/[id]/download/route';
+import { POST as createRoute } from '../app/api/runs/route';
+import { POST as advanceRoute } from '../app/api/runs/[id]/advance/route';
+import { packHash, scriptedContentReviewer } from '../lib/content-review';
+import { validatePack } from '../lib/validation';
 
 const brief: Brief = {
   audience: 'Synthetic executive group', objective: 'Choose one safe AI experiment',
@@ -56,6 +60,23 @@ test('repeated creation makes independent local runs without claims, ledgers or 
   assert.equal(await advanceUiRun(randomUUID()), null);
 }));
 
+test('run creation accepts bounded material snapshots and rejects empty or duplicate selections', async () => fixture(async directory => {
+  const material = { id: 'supplied-reference', title: 'Supplied reference', content: 'x'.repeat(20_000), kind: 'text' };
+  const request = (materials: unknown) => new Request('http://localhost/api/runs', {
+    method: 'POST', headers: { origin: 'http://localhost' }, body: JSON.stringify({ brief, materials }),
+  });
+  const response = await createRoute(request([material]));
+  assert.equal(response.status, 201);
+  const { run } = await response.json();
+  assert.deepEqual(run.materials, [material]);
+  assert.equal(run.status, 'ready');
+  assert.equal(run.steps, 0);
+  assert.deepEqual((await readUiRun(run.id))?.materials, [material]);
+  assert.equal((await createRoute(request([]))).status, 400);
+  assert.equal((await createRoute(request([material, material]))).status, 400);
+  assert.deepEqual(await readdir(path.join(directory, '.local', 'runs')), [`${run.id}.json`]);
+}));
+
 test('a local run resumes and downloads after switching to Postgres, while new runs use Postgres', async t => fixture(async directory => {
   const run = await createUiRun(brief);
   const plan = [
@@ -65,7 +86,6 @@ test('a local run resumes and downloads after switching to Postgres, while new r
     ['read_material', { id: 'use-case-selection' }],
     ['draft_pack', { pack: createTestPack({ ...brief, format: 'remote' }) }],
     ['validate_pack', {}],
-    ['save_for_review', {}],
   ] as const;
   let calls = 0;
   const fetch: typeof globalThis.fetch = async (_url, init) => {
@@ -95,7 +115,7 @@ test('a local run resumes and downloads after switching to Postgres, while new r
   });
   assert.equal((await advanceUiRun(run.id, undefined, fetch))?.status, 'awaiting_input');
   assert.equal(calls, 1);
-  const finished = await advanceUiRun(run.id, 'remote', fetch);
+  const finished = await advanceUiRun(run.id, 'remote', fetch, undefined, scriptedContentReviewer);
   assert.equal(finished?.status, 'completed', finished?.error ?? 'Mocked UI workflow should finish');
   assert.equal(finished.validation?.valid, true);
   assert.equal(finished.steps, 7);
@@ -114,7 +134,7 @@ test('a local run resumes and downloads after switching to Postgres, while new r
   assert.equal(read.mock.callCount(), 1);
   assert.deepEqual(await readdir(path.join(directory, '.local', 'runs')), [`${run.id}.json`]);
   assert.equal(getUiConfig().ready, true);
-  assert.equal(calls, 7);
+  assert.equal(calls, 6);
 }));
 
 test('historical UI result stays readable, downloadable and terminal on advance without changing archived evidence', async () => fixture(async directory => {
@@ -122,7 +142,7 @@ test('historical UI result stays readable, downloadable and terminal on advance 
   await mkdir(path.join(historicalDirectory, 'runs'), { recursive: true });
   const created = await createUiRun({ ...brief, format: 'remote' });
   const archived = {
-    ...created, id: randomUUID(), status: 'completed', pack: createTestPack({ ...brief, format: 'remote' }),
+    ...created, workflowVersion: undefined, id: randomUUID(), status: 'completed', pack: createTestPack({ ...brief, format: 'remote' }),
     validation: { valid: true, totalMinutes: 90, issues: [] }, steps: 7,
   };
   const files = {
@@ -143,4 +163,42 @@ test('historical UI result stays readable, downloadable and terminal on advance 
   assert.equal((await downloaded.json()).provenance.liveModelUsed, true);
   assert.equal((await advanceUiRun(archived.id, 'remote'))?.status, 'completed');
   for (const [filename, contents] of Object.entries(files)) assert.equal(await readFile(path.join(historicalDirectory, filename), 'utf8'), contents);
+}));
+
+test('ordinary completed workshops stay readable and downloadable when generation is unavailable', async () => fixture(async () => {
+  const completed = await createUiRun({ ...brief, format: 'remote' });
+  const unfinished = await createUiRun({ ...brief, format: 'remote' });
+  const store = new LocalRunStore();
+  const saved = await store.read(completed.id);
+  assert.ok(saved);
+  const chosen = saved.materials!;
+  saved.pack = createTestPack(saved.brief, { materials: chosen });
+  saved.readSourceIds = chosen.map(material => material.id);
+  saved.revision = 1;
+  saved.validation = validatePack(saved.pack, saved.brief, saved.readSourceIds, chosen);
+  const review = await scriptedContentReviewer({ brief: saved.brief, materials: chosen, pack: saved.pack });
+  saved.contentReview = {
+    ...review, status: 'passed', reviewedRevision: saved.revision, reviewedPackHash: packHash(saved.pack),
+    mode: 'scripted', attempt: 1, issues: [],
+  };
+  saved.status = 'completed';
+  await store.save(saved);
+
+  process.env.GOOGLE_GENERATIVE_AI_API_KEY = '';
+  assert.equal(getUiConfig().ready, false, 'Only generation readiness is unavailable.');
+  const params = { params: Promise.resolve({ id: completed.id }) };
+  assert.equal((await readRoute(new Request(`http://localhost/api/runs/${completed.id}`), params)).status, 200);
+  for (const format of ['pdf', 'docx', 'md', 'json']) {
+    const response = await downloadRoute(new Request(`http://localhost/api/runs/${completed.id}/download?format=${format}`), params);
+    assert.equal(response.status, 200, `Saved workshop should still download as ${format}.`);
+  }
+
+  const createResponse = await createRoute(new Request('http://localhost/api/runs', {
+    method: 'POST', headers: { origin: 'http://localhost' }, body: JSON.stringify({ brief }),
+  }));
+  assert.equal(createResponse.status, 503, 'Generation readiness must still gate new workshops.');
+  const advanceResponse = await advanceRoute(new Request(`http://localhost/api/runs/${unfinished.id}/advance`, {
+    method: 'POST', headers: { origin: 'http://localhost' }, body: '{}',
+  }), { params: Promise.resolve({ id: unfinished.id }) });
+  assert.equal(advanceResponse.status, 503, 'Generation readiness must still gate unfinished work.');
 }));

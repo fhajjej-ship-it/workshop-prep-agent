@@ -10,7 +10,7 @@ const utilityFont = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbr
 
 export const metadata: Metadata = {
   title: 'Workshop Prep Agent — Independent prototype',
-  description: 'A standalone synthetic workshop planning prototype. Preparation, source references, and checks for human review.',
+  description: 'Prepare a workshop from your brief and source materials, with an agenda, exercise and facilitator notes for human review.',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

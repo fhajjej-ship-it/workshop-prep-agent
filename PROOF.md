@@ -1,5 +1,21 @@
 # Local build proof · 2026-09-04
 
+## GitHub checkpoint verification · 2026-09-05
+
+The current app includes supplied-material uploads and pasted text, content review and correction, PDF/Word exports, workshop cards and management, duplication, version history, and editing an existing brief and its sources through the workshop steps. Returning from the brief to **Workshop pack** does not regenerate the saved result.
+
+Verification on an isolated copy of the candidate source, without private environment files:
+
+- `npm test`: **155 passed**, zero failed or skipped. These tests use scripted/mocked model and storage behavior; they do not establish live model quality or hosted execution.
+- `npm run build -- --webpack`: **passed**, including the TypeScript build check, prerendered pages and API route tracing.
+- `npm run typecheck -- --incremental false`: **passed** in the source workspace.
+- `git diff --check`: **passed**.
+- Candidate scope and private-value checks found no environment credentials, local run records, uploaded source documents or temporary runtime files in the GitHub candidate. Bundled export fonts include their license and provenance.
+
+The normal local development server remained running. The latest browser interaction walkthrough was not completed because the browser tool's admin policy blocked access; prior browser evidence below is historical. This checkpoint is not proof of a Vercel deployment or public-demo readiness. Live preparation on Vercel remains blocked in the current configuration, and hosting/access/usage settings still require a separate preparation step.
+
+Local verification logs: [tests](.local/github-checkpoint/tests.log) and [production build](.local/github-checkpoint/build.log). These logs are excluded from Git.
+
 Accountable owner: this Workshop Prep Agent task. Completed within the initial 45-minute pass. This is a standalone synthetic hiring teaser for Farouk's review; employer acceptance and the full role remain unknown.
 
 ## Current local state · 2026-09-04 03:28 Stockholm

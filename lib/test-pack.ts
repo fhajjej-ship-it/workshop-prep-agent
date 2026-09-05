@@ -1,8 +1,10 @@
-import { materials } from './materials';
-import type { Brief, WorkshopPack } from './types';
+import { materials, usesExampleMaterials } from './materials';
+import type { Brief, Material, WorkshopPack } from './types';
 
 /** A predictable fixture for testing workflow mechanics; no model is involved. */
-export function createTestPack(brief: Brief, options?: { invalid?: boolean }): WorkshopPack {
+export function createTestPack(brief: Brief, options?: { invalid?: boolean; materials?: Material[]; feedback?: string }): WorkshopPack {
+  const sources = options?.materials ?? materials;
+  if (sources.length === 0) throw new Error('The scripted fixture needs at least one supplied material.');
   const framing = Math.round(brief.durationMinutes * 0.15);
   const selection = Math.round(brief.durationMinutes * 0.2);
   const practice = Math.round(brief.durationMinutes * 0.45);
@@ -16,7 +18,7 @@ export function createTestPack(brief: Brief, options?: { invalid?: boolean }): W
         : 'Delivery format is unspecified; confirm it before facilitating.';
   const constraints = brief.constraints.trim() || 'No additional constraints supplied.';
   const objective = /[.!?]$/.test(brief.objective.trim()) ? brief.objective.trim() : `${brief.objective.trim()}.`;
-  return {
+  const pack: WorkshopPack = {
     title: 'From AI possibility to a safe first experiment',
     outcome: `Synthetic test pack for ${brief.audience}. Requested objective: ${objective} The fixed template produces a proposed experiment card for human review; it does not establish business results.`,
     agenda: [
@@ -47,6 +49,11 @@ export function createTestPack(brief: Brief, options?: { invalid?: boolean }): W
     ],
     exercise: {
       title: 'The one-page experiment card',
+      scenario: 'Fictional practice input: a small operations team prepares a weekly leadership summary. This week, task A finished on time, task B is two days late awaiting a supplier reply, and task C needs a manager decision by Friday. A coordinator copies these updates into a short summary and a team lead reviews every statement before sharing it. There is no measured time-saving baseline. Use these invented updates to design a reversible drafting experiment; do not send anything or connect a real system.',
+      expectedOutput: 'One experiment card naming the input, proposed draft output, review owner, baseline to collect, success measure, human approval point and stop condition. Include one unresolved assumption and a decision to test, revise or stop.',
+      sampleResponse: 'Example card: use only the three invented weekly updates as input. Produce a three-sentence draft summary with a reference to each original update. The fictional team lead checks every sentence before sharing. First measure current preparation and correction time; no saving is claimed. Success means all three updates are represented accurately and the lead can approve the draft. Stop if the draft invents a fact or misses the Friday decision. Decision: test using fictional inputs; investigate review effort before extending the experiment.',
+      durationMinutes: practice,
+      agendaSectionIndex: 2,
       instructions: [
         `${delivery} Use this invented scenario: a team manually turns a fictional weekly operations update into a short leadership summary.`,
         'Describe the current task and who reviews its output. List two alternative tasks, then justify which is most suitable for a small, reversible experiment.',
@@ -66,6 +73,24 @@ export function createTestPack(brief: Brief, options?: { invalid?: boolean }): W
       'Review the supplied constraints in exercise instruction 5 before facilitating. Use invented text only, keep outputs advisory and stop if sensitive information or an operational action becomes necessary. [safe-experimentation]',
       'Close with a proposed experiment and a measurement plan. No customer outcome, deployment, affiliation or financial return is established by this synthetic workshop. [use-case-selection]',
     ],
-    sources: materials.map(({ id, title }) => ({ id, title })),
+    sources: sources.map(({ id, title }) => ({ id, title })),
+    sourceClaims: sources.map(source => ({
+      claim: `The selected reference "${source.title}" includes the quoted passage. This scripted fixture checks citation linkage, not workshop suitability.`,
+      sourceId: source.id,
+      quote: source.content.trim().slice(0, 220),
+    })),
   };
+  const sourceId = (id: string) => sources.find(source => source.id === id)?.id
+    ?? sources[Math.max(0, materials.findIndex(source => source.id === id)) % sources.length].id;
+  const references = (ids: string[]) => [...new Set(ids.map(sourceId))];
+  pack.agenda.forEach(item => { item.sourceIds = references(item.sourceIds); });
+  pack.exercise.sourceIds = references(pack.exercise.sourceIds);
+  pack.facilitatorNotes = pack.facilitatorNotes.map(note => note.replace(/\[([^\]]+)\]/g, (_match, id: string) => `[${sourceId(id)}]`));
+  if (!usesExampleMaterials(sources)) {
+    const notice = 'This scripted fixture does not interpret or derive its workshop content from the supplied documents. Its source references exercise citation wiring only.';
+    pack.outcome += ` ${notice}`;
+    pack.facilitatorNotes[0] = `${notice} A human must assess whether the fixed synthetic exercise suits the brief. [${sources[0].id}]`;
+  }
+  if (options?.feedback) pack.outcome += ` Scripted revision request recorded: ${options.feedback} This fixed fixture does not interpret the requested change.`;
+  return pack;
 }

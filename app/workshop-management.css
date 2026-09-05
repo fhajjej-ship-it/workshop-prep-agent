@@ -1,0 +1,33 @@
+.workshop-management-dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 30px;
+  overflow-y: auto;
+  color: var(--ink);
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 24px 80px rgb(26 43 69 / 18%);
+}
+.workshop-management-dialog::backdrop { background: rgb(20 34 55 / 35%); }
+.workshop-management-dialog h2 { margin: 10px 0 16px; font-size: 26px; letter-spacing: -.6px; }
+.workshop-management-dialog p { color: var(--muted); font-size: 15px; line-height: 1.65; }
+.workshop-management-dialog .workshop-management-name { margin-bottom: 12px; color: var(--ink); font-weight: 600; overflow-wrap: anywhere; }
+.workshop-management-field { display: grid; gap: 8px; margin-top: 22px; }
+.workshop-management-field label { font-size: 14px; font-weight: 500; }
+.workshop-management-field input { box-sizing: border-box; width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--white); font: inherit; }
+.workshop-management-loading { display: flex; align-items: center; gap: 9px; margin-top: 16px; }
+.workshop-management-error { margin-top: 18px; padding: 14px; border: 1px solid #e9c5c0; border-radius: 8px; background: #fff5f3; }
+.workshop-management-error p { color: #8a3429; margin: 0 0 8px; }
+.workshop-management-buttons { display: flex; justify-content: flex-end; gap: 10px; margin-top: 28px; }
+.workshop-delete-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 12px 18px; border: 1px solid #a43729; border-radius: 8px; background: #a43729; color: white; font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
+.workshop-delete-button:hover:not(:disabled) { background: #8b2c20; }
+.workshop-delete-button:disabled { opacity: .5; cursor: not-allowed; }
+.workshop-management-dialog :focus-visible { outline: 2px solid var(--navy); outline-offset: 3px; }
+.workshop-library-notice { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; color: var(--navy); font-size: 15px; }
+@media (max-width: 540px) {
+  .workshop-management-dialog { padding: 22px; }
+  .workshop-management-buttons { flex-wrap: wrap; }
+  .workshop-management-buttons button { flex: 1; }
+}

@@ -26,7 +26,9 @@ export function describeOutcome(event: ToolEvent, duration: number): Outcome {
       : { title: 'Correction needed', detail: issues.join(' ') || 'The draft has not passed its checks.', tone: 'warning' };
   }
   if (event.tool === 'save_for_review') return { title: `Draft ${typeof output.revision === 'number' ? output.revision : ''} saved for review`.replace('  ', ' '), detail: 'The pack is ready for your review and download.', tone: 'success' };
+  if (event.tool === 'review_content') return { title: `${output.mode === 'scripted' ? 'Scripted' : 'AI-assisted'} content review ${output.status === 'passed' ? 'complete' : 'found issues'}`, detail: output.status === 'passed' ? 'No issues flagged by this review. Human review is still required.' : Array.isArray(output.issues) ? `${output.issues.length} issue${output.issues.length === 1 ? '' : 's'} recorded for revision.` : 'Review the saved feedback.', tone: output.status === 'passed' ? 'success' : 'warning' };
   if (event.tool === 'ask_missing_info') return { title: 'Workshop format requested', detail: typeof output.question === 'string' ? output.question : undefined, tone: 'neutral' };
+  if (event.tool === 'ask_clarification') return { title: 'Workshop detail requested', detail: typeof output.question === 'string' ? output.question : undefined, tone: 'neutral' };
   return { title: `${event.tool.replace(/_/g, ' ')} completed`, tone: 'neutral' };
 }
 
@@ -37,8 +39,11 @@ export function describeCurrentAction(run: PublicRun | null, starting: boolean, 
   if (run.status === 'completed') return 'Preparation finished';
   if (run.status === 'failed') return 'Preparation stopped';
   if (run.status === 'ready') return resuming ? 'Starting the agent' : 'Ready to resume';
+  if (run.currentAction?.phase === 'review') return 'Reviewing goal fit, source claims and exercise completeness';
   if (run.currentAction?.phase === 'model') {
-    if (run.validation?.valid) return 'Checks passed. Waiting for the saved pack';
+    if (run.contentReview?.status === 'needs_revision' && run.contentReview.reviewedRevision === run.revision) return `Content review found issues in draft ${run.revision}. A revision is pending`;
+    if (run.validation?.valid && (run.workflowVersion !== 2 || run.contentReview?.status === 'passed' && run.contentReview.reviewedRevision === run.revision)) return 'Checks passed. Waiting for the saved pack';
+    if (run.validation?.valid) return 'Timing checks passed. Content review is pending';
     if (run.validation) return `Draft ${run.revision} needs changes. A revised draft is pending`;
     if (run.pack) return `Draft ${run.revision} returned. Checks are pending`;
     if (run.readSourceIds.length) return `${run.readSourceIds.length} reference${run.readSourceIds.length === 1 ? '' : 's'} read. The first draft is pending`;
@@ -49,10 +54,39 @@ export function describeCurrentAction(run: PublicRun | null, starting: boolean, 
     read_material: 'Reading a supplied reference',
     draft_pack: 'Recording the returned draft',
     validate_pack: 'Checking the draft’s timing and references',
+    review_content: 'Reviewing goal fit, source claims and exercise completeness',
     save_for_review: 'Saving the checked pack for your review',
     ask_missing_info: 'Preparing a question for you',
+    ask_clarification: 'Preparing one question to tailor the workshop',
   } as Record<string, string>)[run.currentAction.tool ?? ''] ?? 'Running a preparation action';
   return 'Waiting for the next preparation update';
+}
+
+export function getPreparationStages(run: PublicRun | null) {
+  const referenceCount = run?.readSourceIds.length ?? 0;
+  const current = run?.status === 'running' ? run.currentAction : null;
+  const currentTool = current?.phase === 'tool' ? current.tool : undefined;
+  const reading = currentTool === 'search_materials' || currentTool === 'read_material';
+  const asking = currentTool === 'ask_missing_info' || currentTool === 'ask_clarification';
+  const contentPassed = run?.contentReview?.status === 'passed' && run.contentReview.reviewedRevision === run.revision;
+  const checksPassed = run?.validation?.valid === true && (run.workflowVersion !== 2 || contentPassed);
+  const stages = [
+    { title: 'Confirm the brief', done: Boolean(run?.brief.format) && run?.status !== 'awaiting_input' && !asking, detail: run?.status === 'awaiting_input' ? 'Your answer is needed' : run?.brief.format ? 'Audience, goal and format supplied' : 'Confirm who, why, how and how long' },
+    { title: 'Review references', done: Boolean(run?.pack) && !reading, detail: `${referenceCount} reference${referenceCount === 1 ? '' : 's'} read` },
+    { title: 'Build the pack', done: Boolean(run?.pack), detail: run?.pack ? `Draft ${run.revision} returned` : 'Agenda, exercise, notes and sources' },
+    { title: 'Check and improve', done: checksPassed, detail: run?.workflowVersion === 2 ? checksPassed ? 'Timing checks and content review complete' : run.contentReview?.status === 'needs_revision' && run.contentReview.reviewedRevision === run.revision ? `${run.contentReview.issues.length} content issue${run.contentReview.issues.length === 1 ? '' : 's'} to address` : 'Timing checks and a separate content review' : run?.validation ? run.validation.valid ? 'Timing and reference checks passed' : `${run.validation.issues.length} issue${run.validation.issues.length === 1 ? '' : 's'} to address` : 'Check the draft and revise if needed' },
+    { title: 'Save for review', done: run?.status === 'completed', detail: run?.status === 'completed' ? 'Saved for your review' : 'Hand over the checked pack' },
+  ];
+  let currentStage = stages.findIndex(stage => !stage.done);
+  if (run?.status === 'completed') currentStage = -1;
+  else if (run?.status === 'awaiting_input') currentStage = 0;
+  else if (current?.phase === 'review') currentStage = 3;
+  else if (reading) currentStage = 1;
+  else if (currentTool === 'draft_pack') currentStage = run?.pack ? 3 : 2;
+  else if (currentTool === 'validate_pack' || currentTool === 'review_content') currentStage = 3;
+  else if (currentTool === 'save_for_review') currentStage = 4;
+  else if (currentTool === 'ask_missing_info' || currentTool === 'ask_clarification') currentStage = 0;
+  return { stages, currentStage };
 }
 
 export default function AgentWork({ run, starting, busy, materials, onRead, children, history = false, inProgress = false }: {
@@ -69,15 +103,7 @@ export default function AgentWork({ run, starting, busy, materials, onRead, chil
   const needsAnswer = visibleRun?.status === 'awaiting_input' && !busy;
   const stopped = visibleRun?.status === 'failed';
   const showSpinner = inProgress && !stopped && visibleRun?.status !== 'completed';
-  const referenceCount = visibleRun?.readSourceIds.length ?? 0;
-  const stages = [
-    { title: 'Confirm the brief', done: Boolean(visibleRun?.brief.format), detail: visibleRun?.brief.format ? 'Audience, goal and format supplied' : 'Confirm who, why, how and how long' },
-    { title: 'Review references', done: referenceCount > 0, detail: `${referenceCount} reference${referenceCount === 1 ? '' : 's'} read` },
-    { title: 'Build the pack', done: Boolean(visibleRun?.pack), detail: visibleRun?.pack ? `Draft ${visibleRun.revision} returned` : 'Agenda, exercise, notes and sources' },
-    { title: 'Check and improve', done: visibleRun?.validation?.valid === true, detail: visibleRun?.validation ? visibleRun.validation.valid ? 'Timing and reference checks passed' : `${visibleRun.validation.issues.length} issue${visibleRun.validation.issues.length === 1 ? '' : 's'} to address` : 'Check the draft and revise if needed' },
-    { title: 'Save for review', done: visibleRun?.status === 'completed', detail: visibleRun?.status === 'completed' ? 'Saved for your review' : 'Hand over the checked pack' },
-  ];
-  const currentStage = stages.findIndex(stage => !stage.done);
+  const { stages, currentStage } = getPreparationStages(visibleRun);
   function sourceButton(material: Material, className = 'work-source') {
     return <button type="button" className={className} data-source-id={material.id} aria-label={`Read source: ${material.title}`} onClick={event => { event.currentTarget.focus({ preventScroll: true }); onRead(material); }}><BookOpen size={14} aria-hidden="true" />{material.title}</button>;
   }

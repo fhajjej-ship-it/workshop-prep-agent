@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { MockLanguageModelV4 } from 'ai/test';
-import { materials } from './materials';
+import { getRunMaterials } from './materials';
 import { createTestPack } from './test-pack';
 import type { Run } from './types';
 
 /** Scripted adapter, not an LLM. It drives the real SDK loop and real tools. */
 export function createTestModel(run: Run) {
+  const materials = getRunMaterials(run);
   return new MockLanguageModelV4({
     provider: 'deterministic-test-adapter',
     modelId: 'scripted-workshop-fixture-v1',
@@ -19,11 +20,11 @@ export function createTestModel(run: Run) {
       } else if (unread) {
         name = 'read_material'; input = { id: unread.id };
       } else if (!run.pack) {
-        name = 'draft_pack'; input = { pack: createTestPack(run.brief, { invalid: true }) };
+        name = 'draft_pack'; input = { pack: createTestPack(run.brief, { invalid: true, materials, feedback: run.feedback }) };
       } else if (!run.validation) name = 'validate_pack';
-      else if (!run.validation.valid) {
+      else if (!run.validation.valid || run.contentReview?.status === 'needs_revision') {
         // The fixed correction is triggered by actual validator feedback.
-        name = 'draft_pack'; input = { pack: createTestPack(run.brief) };
+        name = 'draft_pack'; input = { pack: createTestPack(run.brief, { materials, feedback: run.feedback }) };
       } else name = 'save_for_review';
       return {
         content: [{ type: 'tool-call', toolCallId: randomUUID(), toolName: name, input: JSON.stringify(input) }],

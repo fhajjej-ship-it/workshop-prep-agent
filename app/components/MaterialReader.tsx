@@ -2,10 +2,11 @@
 
 import { useEffect, useId, useRef, type RefObject } from 'react';
 import { X } from 'lucide-react';
+import type { Material } from '@/lib/types';
 import '../material-reader.css';
 
 type MaterialReaderProps = {
-  material: { id: string; title: string; content: string } | null;
+  material: Material | null;
   onClose: () => void;
   fallbackFocusRef?: RefObject<HTMLElement | null>;
 };
@@ -39,7 +40,7 @@ export default function MaterialReader({ material, onClose, fallbackFocusRef }: 
         <div>
           <span className="eyebrow">Supplied material</span>
           <h2 id={titleId}>{material.title}</h2>
-          <span className="source-tag" data-source-id={material.id}>{material.id}</span>
+          <span className="source-tag" data-source-id={material.id}>{material.filename ?? (material.kind === 'example' ? 'Example reference' : 'Source text')}{material.pageCount ? ` · ${material.pageCount} ${material.pageCount === 1 ? 'page' : 'pages'}` : ''}</span>
         </div>
         <button type="button" className="material-reader-close" onClick={onClose} autoFocus aria-label="Close material">
           <X size={18} aria-hidden="true" />
