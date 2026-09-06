@@ -1,6 +1,6 @@
 import type { Run } from './types';
 import { getRunMaterials, usesExampleMaterials } from './materials';
-import { isBlankWorksheetTable, parseWorkshopText, worksheetCellText } from './workshop-text';
+import { parseWorkshopText, presentParticipantWorksheet } from './workshop-text';
 
 export function packProvenance(run: Run) {
   const examples = usesExampleMaterials(getRunMaterials(run));
@@ -15,6 +15,7 @@ export type ExportBlock = {
   keepWithNext?: boolean;
   minimumFollowingSpace?: number;
   listContinuation?: boolean;
+  compact?: boolean;
   table?: { headers: string[]; rows: string[][] };
   timeline?: {
     totalMinutes: number;
@@ -46,7 +47,7 @@ export function packExportBlocks(run: Run): ExportBlock[] {
   };
   const add = (kind: ExportBlock['kind'], text: string, options: Partial<ExportBlock> = {}, participantWorksheet = false) => {
     const readable = readableReferences(text);
-    const parts = parseWorkshopText(documentBlockContent({ kind, text: readable }));
+    const parts = parseWorkshopText(documentBlockContent({ kind, text: readable }), { participantWorksheet });
     if (!parts.some(part => part.kind === 'table')) {
       blocks.push({ kind, text: readable, ...options });
       return;
@@ -55,13 +56,14 @@ export function packExportBlocks(run: Run): ExportBlock[] {
     let hasListText = false;
     parts.forEach((part, index) => {
       if (part.kind === 'table') {
-        const blankWorksheet = participantWorksheet && isBlankWorksheetTable(part);
-        const table = blankWorksheet ? { headers: part.headers, rows: part.rows.map(row => row.map((cell, column) => column > 0 ? worksheetCellText(cell) : cell)) } : part;
-        if (blankWorksheet) {
-          blocks.push({ kind: 'subheading', text: 'Participant worksheet', keepWithNext: true, listContinuation: listed });
-          blocks.push({ kind: 'paragraph', text: 'Complete during the exercise.', keepWithNext: true, listContinuation: listed });
+        const worksheetTables = participantWorksheet ? presentParticipantWorksheet(part) : null;
+        for (const table of worksheetTables ?? [{ ...part, title: '' }]) {
+          if (table.title) {
+            blocks.push({ kind: 'subheading', text: table.title, keepWithNext: true, listContinuation: listed });
+            blocks.push({ kind: 'paragraph', text: 'Complete during the exercise.', keepWithNext: true, listContinuation: listed });
+          }
+          blocks.push({ kind: 'table', text: [table.headers, ...table.rows].map(row => row.join('\t')).join('\n'), table, listContinuation: listed });
         }
-        blocks.push({ kind: 'table', text: [table.headers, ...table.rows].map(row => row.join('\t')).join('\n'), table, listContinuation: listed });
       } else {
         blocks.push({
           ...options, kind: listed && hasListText ? 'paragraph' : kind, text: part.text,
@@ -134,6 +136,7 @@ export function packExportBlocks(run: Run): ExportBlock[] {
   }
   add('heading', exampleSources ? 'Provided synthetic sources' : 'Supplied sources');
   pack.sources.forEach(source => add('bullet', source.title));
+  const reviewStart = blocks.length;
   add('heading', 'Quality and review');
   add('subheading', 'Automated checks');
   paragraph(`${run.validation?.totalMinutes} minutes; required sections and source reference integrity passed.`);
@@ -141,9 +144,11 @@ export function packExportBlocks(run: Run): ExportBlock[] {
   if (run.contentReview) {
     add('subheading', 'Content review');
     paragraph(`${run.contentReview.mode === 'model' ? 'Model-assisted judgment' : 'Scripted review fixture, not a content quality assessment'}: ${run.contentReview.status === 'passed' ? 'passed' : 'issues remain'} for revision ${run.contentReview.reviewedRevision}.`);
-    Object.entries(run.contentReview.checks).forEach(([area, check]) => add('bullet', `${area}: ${check.passed ? 'passed' : 'needs revision'} — ${check.reason}`));
+    const checks = Object.entries(run.contentReview.checks);
+    checks.forEach(([area, check], index) => add('bullet', `${area}: ${check.passed ? 'passed' : 'needs revision'} — ${check.reason}`, { keepWithNext: index === checks.length - 1 }));
     paragraph('A model-assisted pass is not certification. Human review is still required.');
   } else paragraph('Content review was not recorded for this historical workflow.');
+  blocks.slice(reviewStart).forEach(block => { block.compact = true; });
   return blocks;
 }
 

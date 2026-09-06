@@ -82,6 +82,18 @@ test('drafting and review share the saved creation date across a clarification r
       assert.match(instructions, /calculations grounded in a supplied date and requested interval/);
       assert.match(instructions, /When the user requests illustrative scheduling proposals, clearly label any proposed date as illustrative and awaiting agreement/);
       assert.match(instructions, /Every dated planned follow-up must satisfy baseline <= follow-up date <= supplied deadline/);
+      assert.match(instructions, /Preserve each source-required action, its explicitly assigned accountable role, and its conditions together/);
+      assert.match(instructions, /A general role description permitting someone to check or assist does not replace a specific source requirement/);
+      assert.match(instructions, /Helpers and delegated checks are allowed when the required role remains explicitly accountable/);
+      assert.match(instructions, /Put the task-relevant rules, category definitions and exceptions in scenario or instructions before learners need them/);
+      assert.match(instructions, /put the supplied facts and constraints for every requested output inside that copyable prompt/);
+      assert.match(instructions, /after editing text, recalculate every displayed word-count label/);
+      assert.match(instructions, /Preserve the population and scope of each source rule/);
+      assert.match(instructions, /Keep prerequisites attached to their specific case or route/);
+      assert.match(instructions, /prepared is not submitted, proposed is not agreed, and pending is not approved/);
+      assert.match(instructions, /Absence of evidence is not evidence of absence/);
+      assert.match(instructions, /a correct answer key does not repair a conflicting facilitator instruction/);
+      assert.match(instructions, /Where group agreement happens later, call earlier participant choices proposed or provisional/);
     }
     for (const prompt of captured.prompts) assert.ok(prompt.includes(brief.objective));
   });

@@ -92,7 +92,7 @@ type SourceActions = { materials: Material[]; onRead: (material: Material) => vo
 function Sources({ ids, materials, onRead }: { ids: string[] } & SourceActions) {
   return <span className="source-tags">{ids.map(id => {
     const material = materials.find(item => item.id === id);
-    return material ? <button type="button" key={id} className="source-tag source-link" data-source-id={id} onClick={event => { event.currentTarget.focus({ preventScroll: true }); onRead(material); }} aria-label={`Read source: ${material.title}`}>{id.startsWith('source-') ? material.title : id}</button> : <span key={id} className="source-tag" data-source-id={id}>{id}</span>;
+    return material ? <button type="button" key={id} className="source-tag source-link" data-source-id={id} onClick={event => { event.currentTarget.focus({ preventScroll: true }); onRead(material); }} aria-label={`Read source: ${material.title}`}>{material.title}</button> : <span key={id} className="source-tag" data-source-id={id}>{id}</span>;
   })}</span>;
 }
 

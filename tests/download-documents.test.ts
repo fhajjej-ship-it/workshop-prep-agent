@@ -359,3 +359,80 @@ test('participant worksheets remove empty placeholders and stray numbering while
     assert.ok(markdownBefore.includes(`4. ${worksheet}`), 'Saved Markdown numbering and placeholders are preserved.');
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+
+test('wide currency worksheets export as smaller editable tables with repeated identities and retained units', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'workshop-wide-blank-export-'));
+  try {
+    const run = await completedRun(new LocalRunStore(directory));
+    const headers = ['Option', 'Capacity (Need >=30)', 'Step-free Entry?', 'Accessible Toilet?', 'Working Hearing Loop?', 'Charge', 'Total Cost (Charge + Common)', 'Headroom (SEK 10,000 - Total)', 'Status (Eligible / Conditional / Excluded)'];
+    const rows = ['North', 'East', 'South', 'West'].map(name => [name, '[ ]', '[ ]', '[ ]', '[ ]', '[SEK ___]', '[SEK ___]', '[SEK ___]', '[ ]']);
+    const worksheet = [headers, headers.map(() => '---'), ...rows].map(row => `| ${row.join(' | ')} |`).join('\n');
+    run.pack!.exercise.instructions = [`Calculate each option.\n\n${worksheet}\n\nRecord the final decision.`];
+    const before = JSON.stringify(run);
+    const markdown = packMarkdown(run);
+    const blocks = packExportBlocks(run);
+    const tables = blocks.filter(block => block.kind === 'table').map(block => block.table!);
+    assert.deepEqual(tables.map(table => table.headers), [headers.slice(0, 5), ['Option', 'Charge (SEK)', 'Total Cost (Charge + Common) (SEK)', headers[7], headers[8]]]);
+    assert.ok(tables.every(table => JSON.stringify(table.rows) === JSON.stringify(rows.map(row => [row[0], '', '', '', '']))));
+    const [pdf, docx] = await Promise.all([packPdf(run), packDocx(run)]);
+    const zip = await JSZip.loadAsync(docx, { checkCRC32: true });
+    const xml = await zip.file('word/document.xml')!.async('string');
+    const wordTables = [...xml.matchAll(/<w:tbl>[\s\S]*?<\/w:tbl>/g)].map(table => [...table[0].matchAll(/<w:tr>[\s\S]*?<\/w:tr>/g)].map(row => [...row[0].matchAll(/<w:tc>[\s\S]*?<\/w:tc>/g)].map(cell => xmlText(cell[0]).trim()))).filter(table => table[0][0] === 'Option');
+    assert.deepEqual(wordTables, tables.map(table => [table.headers, ...table.rows]), 'Each native Word table retains its complete field and row mapping.');
+    const parser = new PDFParse({ data: pdf, isEvalSupported: false, disableFontFace: true, useSystemFonts: false });
+    try {
+      const result = await parser.getText();
+      for (const text of ['Participant worksheet: Comparison', 'Participant worksheet: Budget and decision', 'Calculate each option.', 'Record the final decision.']) assert.ok(normalized(result.text).includes(text), `PDF retains ${text}`);
+      for (const [name] of rows) assert.equal((result.text.match(new RegExp(`\\b${name}\\b`, 'g')) ?? []).length, 2, 'Each row identity repeats in both smaller tables.');
+      assert.doesNotMatch(result.text, /\[SEK ___\]|\[\s*\]/);
+      assert.ok(result.text.includes('SEK'));
+    } finally { await parser.destroy(); }
+    const answered = structuredClone(run);
+    answered.pack!.exercise.instructions = [worksheet.replace('| [SEK ___] |', '| SEK 600 |')];
+    const answeredTables = packExportBlocks(answered).filter(block => block.kind === 'table');
+    assert.equal(answeredTables.length, 1);
+    assert.equal(answeredTables[0].table!.headers.length, 9);
+    assert.equal(answeredTables[0].table!.rows[0][5], 'SEK 600', 'A partially answered table keeps its actual values and structure.');
+    assert.equal(JSON.stringify(run), before);
+    assert.equal(packMarkdown(run), markdown);
+    assert.ok(markdown.includes(worksheet));
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('entry worksheets become native cells and PDF section labels stay with substantive content', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'workshop-entry-layout-'));
+  try {
+    const run = await completedRun(new LocalRunStore(directory));
+    const rows = ['Card A', 'Card B', 'Card C', 'Card D'].map(id => [id, '[Enter label]', '[Enter policy reason]']);
+    run.pack!.exercise.instructions = ['Complete the classification.\n\nCard ID | Decision | Policy reason\n' + rows.map(row => row.join(' | ')).join('\n') + '\n\nKeep the human review step.'];
+    const workedRows = rows.map(([id]) => `| ${id} | ${'A correct response preserves the policy and the human review boundary. '.repeat(7)}End of ${id}. |`);
+    run.pack!.exercise.sampleResponse = `[Illustrative answer key]\n\n| Card ID | Worked answer |\n| --- | --- |\n${workedRows.join('\n')}`;
+    run.pack!.exercise.debrief = ['Discuss the first decision and retain the review boundary. '.repeat(12)];
+    const before = JSON.stringify(run);
+    const markdown = packMarkdown(run);
+    const blocks = packExportBlocks(run);
+    assert.deepEqual(blocks.find(block => block.kind === 'table')!.table!.rows, rows);
+    const [pdf, docx] = await Promise.all([packPdf(run), packDocx(run)]);
+    const zip = await JSZip.loadAsync(docx);
+    const xml = await zip.file('word/document.xml')!.async('string');
+    const wordTable = [...xml.matchAll(/<w:tbl>[\s\S]*?<\/w:tbl>/g)].find(table => xmlText(table[0]).includes('[Enter policy reason]'))!;
+    const wordRows = [...wordTable[0].matchAll(/<w:tr>[\s\S]*?<\/w:tr>/g)].map(row => [...row[0].matchAll(/<w:tc>[\s\S]*?<\/w:tc>/g)].map(cell => xmlText(cell[0]).trim()));
+    assert.deepEqual(wordRows, [['Card ID', 'Decision', 'Policy reason'], ...rows]);
+    const parser = new PDFParse({ data: pdf, isEvalSupported: false, disableFontFace: true, useSystemFonts: false });
+    try {
+      const result = await parser.getText();
+      const pages = result.pages.map(page => page.text.replace(/Workshop Prep Agent · Human review required · \d+ \/ \d+/g, '').trim());
+      const samplePage = pages.find(page => page.includes('Sample response'))!;
+      assert.ok(samplePage.includes('Worked answer') && samplePage.includes('Card A'), 'Heading and intro stay with the first actual answer row.');
+      const debriefPage = pages.find(page => /(?:^|\n)Debrief(?:\n|$)/.test(page))!;
+      assert.ok(debriefPage.includes('Discuss the first decision'), 'Debrief stays with its first bullet.');
+      const closingPage = pages.find(page => page.includes('A model-assisted pass is not certification.'))!;
+      assert.ok(closingPage.includes('completeness:'), 'Closing review notice stays with the final review check.');
+      assert.ok(closingPage.includes('Quality and review'), 'A compact review appendix that fits a page stays together.');
+      assert.doesNotMatch(pages.join('\n'), /Card ID \| Decision|\[Enter label\] \|/);
+      for (const [id] of rows) assert.ok(normalized(pages.join('\n')).includes(`End of ${id}.`));
+    } finally { await parser.destroy(); }
+    assert.equal(JSON.stringify(run), before);
+    assert.equal(packMarkdown(run), markdown);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});

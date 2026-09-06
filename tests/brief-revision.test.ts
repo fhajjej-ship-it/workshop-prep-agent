@@ -85,11 +85,17 @@ test('edited brief and materials stay isolated in the same workshop and drive va
     const user = prompt.find(message => message.role === 'user');
     const part = user?.content.find(item => item.type === 'text');
     assert.ok(part && part.type === 'text');
-    const input = JSON.parse(part.text) as ContentReviewInput;
+    const payload = JSON.parse(part.text) as { evidenceSpans: { text: string; before?: string; after?: string }[] };
+      const input = JSON.parse(JSON.stringify(payload), (_key, value) => value && typeof value === 'object' && Object.keys(value).length === 1 && Array.isArray(value.spans)
+        ? value.spans.map((id: number) => { const span = payload.evidenceSpans[id]; return (span.before ?? '') + span.text + (span.after ?? ''); }).join('') : value) as ContentReviewInput & { artifactCandidates: { index: number; field: string }[]; evidenceSpans: { id: number; field: string }[] };
     reviews.push(input);
     // Scripted assessment verifies the real reviewer request contract, not model judgment.
     return {
-      content: [{ type: 'text', text: JSON.stringify({ ...await scriptedContentReviewer(input), sourceClaimReviews: (input.pack.sourceClaims ?? []).map((_, index) => ({ index, supported: true, reason: 'Scripted evidence coverage fixture; no semantic judgment is claimed.' })) }) }],
+      content: [{ type: 'text', text: JSON.stringify({ ...await scriptedContentReviewer(input),
+        participantInputReviews: input.materials.map((_, materialIndex) => ({ materialIndex, rules: [] })),
+        standaloneDeliverableReviews: [],
+        artifactReviews: input.artifactCandidates.map(({ index, field }) => ({ index, supported: [], mismatches: [], wordCounts: [], nonAssertions: [{ spans: input.evidenceSpans.filter(span => span.field === field).map(span => span.id), kind: 'design' }] })),
+        sourceClaimReviews: (input.pack.sourceClaims ?? []).map((_, index) => ({ index, supported: true, reason: 'Scripted evidence coverage fixture; no semantic judgment is claimed.' })) }) }],
       finishReason: { unified: 'stop', raw: undefined },
       usage: { inputTokens: { total: 0, noCache: 0, cacheRead: undefined, cacheWrite: undefined }, outputTokens: { total: 0, text: 0, reasoning: undefined } },
       warnings: [],

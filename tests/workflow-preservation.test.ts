@@ -62,7 +62,9 @@ test('a revision reviewer receives the persisted parent and rejects changing an 
       const user = prompt.find(message => message.role === 'user');
       const text = user?.content.find(part => part.type === 'text');
       assert.ok(text && text.type === 'text');
-      const input = JSON.parse(text.text) as ContentReviewInput;
+      const payload = JSON.parse(text.text) as { evidenceSpans: { text: string; before?: string; after?: string }[] };
+      const input = JSON.parse(JSON.stringify(payload), (_key, value) => value && typeof value === 'object' && Object.keys(value).length === 1 && Array.isArray(value.spans)
+        ? value.spans.map((id: number) => { const span = payload.evidenceSpans[id]; return (span.before ?? '') + span.text + (span.after ?? ''); }).join('') : value) as ContentReviewInput & { artifactCandidates: { index: number; field: string }[]; evidenceSpans: { id: number; field: string }[] };
       assert.deepEqual(input.parentPack, originalPack);
       assert.equal(input.feedback, feedback);
       const assessment = await scriptedContentReviewer(input);
@@ -71,7 +73,11 @@ test('a revision reviewer receives the persisted parent and rejects changing an 
       // Mutating reviewer input must not alter the stored parent snapshot.
       input.parentPack!.title = 'Reviewer-local mutation';
       return {
-        content: [{ type: 'text', text: JSON.stringify({ ...assessment, sourceClaimReviews: (input.pack.sourceClaims ?? []).map((_, index) => ({
+        content: [{ type: 'text', text: JSON.stringify({ ...assessment,
+          participantInputReviews: input.materials.map((_, materialIndex) => ({ materialIndex, rules: [] })),
+          standaloneDeliverableReviews: [],
+          artifactReviews: input.artifactCandidates.map(({ index, field }) => ({ index, supported: [], mismatches: [], wordCounts: [], nonAssertions: [{ spans: input.evidenceSpans.filter(span => span.field === field).map(span => span.id), kind: 'design' }] })),
+          sourceClaimReviews: (input.pack.sourceClaims ?? []).map((_, index) => ({
           index, supported: true, reason: 'Scripted source-coverage fixture; no semantic assessment is claimed.',
         })) }) }],
         finishReason: { unified: 'stop', raw: undefined },
