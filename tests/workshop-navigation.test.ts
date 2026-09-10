@@ -21,6 +21,32 @@ test('new briefs, edits and saved packs have distinct round-trippable routes', (
   assert.deepEqual(workshopLocation(`?run=${originalId}`), { view: 'workshop', runId: originalId });
 });
 
+test('example briefs have their own route and cannot redirect a saved workshop edit', () => {
+  const example = { view: 'brief', example: 'ai-adoption' } as const;
+  assert.deepEqual(workshopLocation(workshopPath(example).slice(1)), example);
+  assert.deepEqual(workshopLocation('?view=brief&example=unknown'), { view: 'brief' });
+  assert.deepEqual(workshopLocation(`?view=brief&example=ai-adoption&run=${originalId}`), { view: 'brief', runId: originalId });
+});
+
+test('trying an example preserves unrelated drafts and submits a fresh preparation', () => {
+  const existing = workshopBriefDraft(brief, [material]);
+  const example = workshopBriefDraft({ ...brief, audience: 'Nine fictional leaders' }, [material]);
+  const exampleKey = workshopDraftKey(null, 'ai-adoption');
+  const drafts = parseWorkshopDrafts(JSON.stringify({ new: existing, [originalId]: existing, [exampleKey]: example }));
+  assert.deepEqual(drafts.new, existing);
+  assert.deepEqual(drafts[originalId], existing);
+  assert.deepEqual(drafts[exampleKey], example);
+  drafts[exampleKey].brief.audience = 'Edited audience';
+  assert.equal(drafts.new.brief.audience, brief.audience);
+  const request = workshopPreparationRequest(drafts[exampleKey]);
+  assert.equal(request.url, '/api/runs');
+  assert.equal(request.body.brief.audience, 'Edited audience');
+  assert.deepEqual(Object.keys(request.body).sort(), ['brief', 'materials']);
+  delete drafts[exampleKey];
+  assert.deepEqual(drafts.new, existing);
+  assert.deepEqual(drafts[originalId], existing);
+});
+
 test('new and edit drafts restore separately, including removed materials and unadded text', () => {
   const draft = workshopBriefDraft(brief, [material]);
   const edit = workshopBriefDraft({ ...brief, durationMinutes: 60 }, []);

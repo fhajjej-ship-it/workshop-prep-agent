@@ -1,6 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { ArrowRight, Clock3, Copy, LoaderCircle, MoreHorizontal, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { EXAMPLE_WORKSHOP_ID, EXAMPLE_WORKSHOP_PATH, exampleWorkshopMetadata, exampleWorkshopRun } from '@/lib/example-workshop';
 import { workshopFamilyId, type RecentRunSummary } from '@/lib/recent-runs';
 import type { Brief } from '@/lib/types';
 import { formatGeneratedProse } from './GeneratedProse';
@@ -42,10 +44,14 @@ type WorkshopHomeProps = {
   onRemoveWorkshop: (id: string) => void;
   continuingBrief?: boolean;
   onContinueBrief?: () => void;
+  onTryExample?: () => void;
+  exampleNavigationBusy?: boolean;
 };
 
-export default function WorkshopHome({ runs, loading, disabled, openingId, actionId, onNewWorkshop, onOpenWorkshop, onRenameWorkshop, onDeleteWorkshop, onDuplicateWorkshop, onRemoveWorkshop, continuingBrief = false, onContinueBrief }: WorkshopHomeProps) {
+export default function WorkshopHome({ runs, loading, disabled, openingId, actionId, onNewWorkshop, onOpenWorkshop, onRenameWorkshop, onDeleteWorkshop, onDuplicateWorkshop, onRemoveWorkshop, continuingBrief = false, onContinueBrief, onTryExample, exampleNavigationBusy = false }: WorkshopHomeProps) {
   const unavailable = disabled || loading || Boolean(openingId) || Boolean(actionId);
+  const exampleUnavailable = exampleNavigationBusy || Boolean(openingId) || Boolean(actionId);
+  const tryExampleUnavailable = unavailable || exampleNavigationBusy;
 
   return <section className="workshop-home" aria-labelledby="workshop-home-heading" aria-busy={loading}>
     <header className="workshop-home-heading">
@@ -54,6 +60,30 @@ export default function WorkshopHome({ runs, loading, disabled, openingId, actio
         <p>Continue a saved workshop or prepare a new one.</p>
       </div>
     </header>
+
+    <section className="workshop-example-feature" aria-labelledby="workshop-example-heading">
+      <div className="workshop-example-copy">
+        <span className="eyebrow">Saved example · Fictional company and materials</span>
+        <h2 id="workshop-example-heading">{exampleWorkshopMetadata.title}</h2>
+        <p>{exampleWorkshopMetadata.summary}</p>
+        <div className="workshop-example-actions">
+          <Link href={EXAMPLE_WORKSHOP_PATH} className="secondary-button" aria-disabled={exampleUnavailable} tabIndex={exampleUnavailable ? -1 : undefined}
+            onClick={event => { if (exampleUnavailable) event.preventDefault(); }}>Explore an example workshop<ArrowRight size={17} aria-hidden="true" /></Link>
+          {onTryExample ? <button type="button" className="text-button workshop-example-try" disabled={tryExampleUnavailable} onClick={onTryExample}>Try this example</button>
+            : <Link href={`/?view=brief&example=${EXAMPLE_WORKSHOP_ID}`} className="text-button workshop-example-try" aria-disabled={tryExampleUnavailable} tabIndex={tryExampleUnavailable ? -1 : undefined}
+              onClick={event => { if (tryExampleUnavailable) event.preventDefault(); }}>Try this example</Link>}
+        </div>
+        <p className="workshop-example-provenance">Generated previously. Exploring opens the saved pack without starting a new run.</p>
+      </div>
+      <div className="workshop-example-preview">
+        <span className="eyebrow">Inside the pack</span>
+        <div className="workshop-example-timeline" aria-label={`Saved agenda: ${exampleWorkshopRun.brief.durationMinutes} minutes across ${exampleWorkshopRun.pack.agenda.length} activities`}>
+          {exampleWorkshopRun.pack.agenda.map((item, index) => <span key={item.title} className={`segment-${index % 5}`} style={{ flexGrow: item.minutes }} title={`${item.title} · ${item.minutes} minutes`}><span>{item.minutes}<small>m</small></span></span>)}
+        </div>
+        <p>{exampleWorkshopRun.brief.durationMinutes}-minute agenda</p>
+        <ul><li>Participant exercise</li><li>Facilitator notes</li><li>{exampleWorkshopRun.materials.length} source materials you can read</li></ul>
+      </div>
+    </section>
 
     {openingId && <p className="sr-only" role="status">Opening the selected workshop.</p>}
     {actionId && <p className="sr-only" role="status">Updating the selected workshop.</p>}

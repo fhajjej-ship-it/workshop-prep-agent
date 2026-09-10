@@ -2,6 +2,12 @@
 
 A standalone workshop-preparation app. A brief and selected materials become an agenda, exercise and facilitator notes with source references and a downloadable pack for human review. Three fictional example references remain available for trying the workflow. This project establishes no affiliation, customer engagement, deployment or business results.
 
+## Explore the example
+
+Home offers **Explore an example workshop**, opening `/example`: a bundled, read-only Northlight AI pilot selection pack from a completed model run using fictional materials. Its agenda, exercise, sources, saved review, PDF and Word downloads are available without a model call or database lookup. Browsing it does not add a workshop to the visitor's library.
+
+**Try this example** opens `/?view=brief&example=ai-adoption` with its brief and two sources selected. The example draft is kept separately from an existing new-workshop draft. Only **Prepare workshop** starts a fresh run through the normal workflow; the result can differ from the saved example. The original example remains unchanged.
+
 ## Run locally
 
 Dependencies are already installed in this workspace. Use the existing package lock when setting up a fresh checkout with `npm ci`.

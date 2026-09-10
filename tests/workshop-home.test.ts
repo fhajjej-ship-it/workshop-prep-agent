@@ -36,7 +36,7 @@ test('busy home menus preserve existing locks and the in-session brief action', 
     continuingBrief: true, onContinueBrief: noAction, ...actions,
   }));
   assert.equal((html.match(/aria-label="Actions for Workshop/g) ?? []).length, 4);
-  assert.equal((html.match(/aria-disabled="true"/g) ?? []).length, 4);
+  assert.equal((html.match(/<summary[^>]*aria-disabled="true"/g) ?? []).length, 4);
   const removeButtons = (html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? []).filter(button => button.includes('Remove from this browser'));
   assert.equal(removeButtons.length, 4);
   for (const button of removeButtons) assert.match(button, /^<button\b[^>]*disabled=""/);

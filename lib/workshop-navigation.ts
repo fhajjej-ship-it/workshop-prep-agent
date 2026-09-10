@@ -4,18 +4,21 @@ import { materialsSchema } from './material-input';
 import { revisionInputSchema } from './revision-input';
 import type { Brief, Material, PublicRun } from './types';
 
-export type WorkshopLocation = { view: 'home'; runId?: never } | { view: 'brief'; runId?: string } | { view: 'workshop'; runId: string };
+export type WorkshopExample = 'ai-adoption';
+export type WorkshopLocation = { view: 'home'; runId?: never } | { view: 'brief'; runId?: string; example?: WorkshopExample } | { view: 'workshop'; runId: string };
 
 export function workshopLocation(search: string): WorkshopLocation {
   const runId = preferredRunId(search, null);
-  if (new URLSearchParams(search).get('view') === 'brief') return runId ? { view: 'brief', runId } : { view: 'brief' };
+  const params = new URLSearchParams(search);
+  if (params.get('view') === 'brief') return runId ? { view: 'brief', runId }
+    : params.get('example') === 'ai-adoption' ? { view: 'brief', example: 'ai-adoption' } : { view: 'brief' };
   if (runId) return { view: 'workshop', runId };
   return { view: 'home' };
 }
 
 export function workshopPath(location: WorkshopLocation): string {
   if (location.view === 'workshop') return `/?run=${encodeURIComponent(location.runId)}`;
-  return location.view === 'brief' ? `/?view=brief${location.runId ? `&run=${encodeURIComponent(location.runId)}` : ''}` : '/';
+  return location.view === 'brief' ? `/?view=brief${location.runId ? `&run=${encodeURIComponent(location.runId)}` : location.example ? `&example=${location.example}` : ''}` : '/';
 }
 
 export const workshopDraftsStorageKey = 'workshop-prep-brief-drafts';
@@ -28,14 +31,14 @@ const briefDraftSchema = revisionInputSchema.extend({ brief: z.object({
 export type WorkshopBriefDraft = z.infer<typeof briefDraftSchema>;
 export type WorkshopBriefDrafts = Record<string, WorkshopBriefDraft>;
 
-export function workshopDraftKey(runId?: string | null) { return runId ?? 'new'; }
+export function workshopDraftKey(runId?: string | null, example?: WorkshopExample) { return runId ?? (example ? `example:${example}` : 'new'); }
 
 export function parseWorkshopDrafts(raw: string | null): WorkshopBriefDrafts {
   try {
     const value: unknown = JSON.parse(raw ?? '{}');
     if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
     return Object.fromEntries(Object.entries(value).flatMap(([key, input]) => {
-      if (key !== 'new' && preferredRunId('', key) !== key) return [];
+      if (key !== 'new' && key !== 'example:ai-adoption' && preferredRunId('', key) !== key) return [];
       const parsed = briefDraftSchema.safeParse(input);
       return parsed.success ? [[key, parsed.data]] : [];
     }));
