@@ -5,6 +5,7 @@ import { advanceRun, createRun, createRevisionRun, readRun } from './agent';
 import type { ContentReviewer } from './content-review';
 import { getConfig, getStorageConfig } from './config';
 import { createDirectGoogleModel } from './direct-model';
+import { admitLiveGeneration, withGenerationAllowance } from './generation-allowance';
 import { RequestError } from './http';
 import { getStore, LocalRunStore, validRunId, type RunStore } from './store';
 import { resolveWorkshopId } from './workshop-lineage';
@@ -28,13 +29,15 @@ export function getUiConfig(env: Record<string, string | undefined> = process.en
 }
 
 export async function createUiRun(brief: Brief, materials?: Material[], managementHash?: string): Promise<Run> {
-  return createRun(brief, getStore(), getConfig(), materials, managementHash);
+  const config = getConfig();
+  return createRun(brief, withGenerationAllowance(getStore(), config), config, materials, managementHash);
 }
 
 export async function createUiRevision(id: string, feedback: string, managementHash?: string, selectedMaterials?: Material[], updatedBrief?: Brief): Promise<Run> {
   const original = await readUiRun(id);
   if (!original) throw new RequestError('Run not found.', 404);
-  return createRevisionRun(original, feedback, getStore(), getConfig(), managementHash, selectedMaterials, updatedBrief);
+  const config = getConfig();
+  return createRevisionRun(original, feedback, withGenerationAllowance(getStore(), config), config, managementHash, selectedMaterials, updatedBrief);
 }
 
 export async function isArchivedUiRun(id: string): Promise<boolean> {
@@ -77,7 +80,12 @@ export async function advanceUiRun(id: string, format?: Brief['format'], fetch?:
   }
   const config = getConfig();
   const store = await storeForRun(id);
-  if (!await store.read(id)) return null;
+  const run = await store.read(id);
+  if (!run) return null;
+  // Older queued runs also need admission; terminal reads and admitted continuations do not.
+  const continuing = run.status === 'ready' || (run.status === 'awaiting_input' && (format !== undefined || answer !== undefined));
+  if (continuing && config.ready && run.mode === config.mode && run.model === config.model
+      && await admitLiveGeneration(run, config)) await store.save(run);
   return advanceRun(id, store, format, {
     config, answer, reviewer,
     ...(fetch && config.mode === 'live' ? { model: createDirectGoogleModel({ fetch }) } : {}),

@@ -65,6 +65,7 @@ export type Run = {
   displayName?: string;
   copiedFrom?: { runId: string; title: string; updatedAt: string };
   managementHash?: string;
+  dailyGenerationReserved?: true;
   createdAt: string;
   updatedAt: string;
   status: 'ready' | 'running' | 'awaiting_input' | 'completed' | 'failed';
@@ -93,11 +94,12 @@ export type Run = {
   version: number;
 };
 
-export type PublicRun = Omit<Run, 'messages' | 'managementHash'>;
+export type PublicRun = Omit<Run, 'messages' | 'managementHash' | 'dailyGenerationReserved'>;
 export type AppConfig = {
   mode: 'test' | 'live';
   model: string | null;
   storage: 'local' | 'postgres';
   ready: boolean;
   blockers: string[];
+  dailyGenerationLimit?: number;
 };

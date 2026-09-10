@@ -32,7 +32,7 @@ function timedOut(error: unknown, deadline?: number) {
 }
 
 export function publicRun(run: Run): PublicRun {
-  const { messages: _messages, managementHash: _managementHash, ...visible } = run;
+  const { messages: _messages, managementHash: _managementHash, dailyGenerationReserved: _dailyGenerationReserved, ...visible } = run;
   return visible;
 }
 

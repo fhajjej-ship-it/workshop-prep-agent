@@ -5,3 +5,9 @@ CREATE TABLE IF NOT EXISTS workshop_runs (
   data jsonb NOT NULL,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Independent of workshop_runs: deleting a workshop never restores allowance.
+CREATE TABLE IF NOT EXISTS workshop_generation_allowance (
+  allowance_date date PRIMARY KEY,
+  run_ids uuid[] NOT NULL DEFAULT ARRAY[]::uuid[]
+);

@@ -8,6 +8,16 @@ Home offers **Explore an example workshop**, opening `/example`: a bundled, read
 
 **Try this example** opens `/?view=brief&example=ai-adoption` with its brief and two sources selected. The example draft is kept separately from an existing new-workshop draft. Only **Prepare workshop** starts a fresh run through the normal workflow; the result can differ from the saved example. The original example remains unchanged.
 
+## Shared demo allowance
+
+Set `WORKSHOP_DAILY_GENERATION_LIMIT=20` to admit up to 20 new live preparations and reruns per UTC day across all visitors. The brief shows the configured allowance; refused starts return HTTP 429 with a reset time and `Retry-After`, while the existing brief stays editable. `0` pauses new starts. An unset variable preserves existing behavior for a staged rollout; invalid values block generation rather than silently disabling the limit. Test mode is not charged.
+
+Each accepted preparation reserves one slot before its run record is created. Clarification and continuation of that admitted run do not reserve again, including after midnight or when new starts are paused. Failed or deleted runs do not refund slots. An unsuccessful write after reservation can conservatively consume a slot; this prevents retries from exceeding the allowance. Older unfinished runs without a reservation pass the gate before they can advance. This bounds **new preparation starts**, not exact daily spend: already admitted work can continue later within its existing per-run limits.
+
+For an existing Postgres database, apply the additive `db/daily-generation-allowance.sql` migration **before** enabling the environment variable. Fresh databases can use `db/schema.sql`. The app never applies migrations automatically. The daily ledger contains only UTC dates and run identifiers, separately from workshop records. Postgres serializes reservations across server instances; local storage persists its ledger under `.local/generation-allowance` and supports one Node process. Storage errors block new admissions. Saved-workshop reads, examples, copying a completed pack, and downloads never depend on this ledger.
+
+Rollout: apply the additive migration, set `WORKSHOP_DAILY_GENERATION_LIMIT=20` in Vercel, then deploy this code. Rollback: unset the variable and redeploy; retain the ledger so re-enabling the same day does not reset usage. No existing workshop or source needs migration.
+
 ## Run locally
 
 Dependencies are already installed in this workspace. Use the existing package lock when setting up a fresh checkout with `npm ci`.
@@ -82,7 +92,7 @@ Actual Neon persistence was verified with a scripted 10-step workflow: clarifica
 
 The Vercel project is linked to this repository's `main` branch. Production uses `WORKSHOP_MODE=live`, `WORKSHOP_STORE=postgres`, and the explicit `WORKSHOP_ALLOW_HOSTED_LIVE=true` opt-in. Set `DATABASE_URL` and `GOOGLE_GENERATIVE_AI_API_KEY` as production secrets in Vercel; keep their values out of Git. Without the hosted opt-in, live preparation remains blocked on Vercel. Local development does not need the hosted opt-in.
 
-Use the Next.js framework preset, `npm ci` for installation and `npm run build -- --webpack` for the production build. `vercel.json` selects Frankfurt for functions, matching the existing Neon database region. The preparation route allows four minutes for the three-minute agent request plus final persistence. Interrupted runs retain saved work and are reported as stopped after the recovery threshold. These are per-run limits; the app does not implement a shared daily usage allowance or private user accounts. Browser history and management cookies are scoped to the site's origin, so local browser history does not transfer automatically to the deployed site.
+Use the Next.js framework preset, `npm ci` for installation and `npm run build -- --webpack` for the production build. `vercel.json` selects Frankfurt for functions, matching the existing Neon database region. The preparation route allows four minutes for the three-minute agent request plus final persistence. Interrupted runs retain saved work and are reported as stopped after the recovery threshold. These per-run limits are complemented by the optional shared daily generation allowance below. The app does not implement private user accounts. Browser history and management cookies are scoped to the site's origin, so local browser history does not transfer automatically to the deployed site.
 
 ## Workshop library
 
