@@ -32,5 +32,14 @@
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2"
+  },
+  "description": "Prepare reviewable workshop packs from a brief and source materials using a bounded AI tool workflow.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fhajjej-ship-it/workshop-prep-agent.git"
   }
 }

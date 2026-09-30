@@ -8,3 +8,8 @@ next-env.d.ts
 .DS_Store
 ._*
 .vercel
+
+# Private registry credentials and temporary verification artifacts
+.npmrc
+.pypirc
+.local-test-*/
