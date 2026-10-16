@@ -17,7 +17,23 @@ export function assertSameOrigin(request: Request): void {
 }
 export async function readBody(request: Request, maxChars = 16_000): Promise<unknown> {
   assertSameOrigin(request);
-  const text = await request.text();
+  let text = '';
+  const reader = request.body?.getReader();
+  if (reader) {
+    const decoder = new TextDecoder();
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) { text += decoder.decode(); break; }
+        // Decode incrementally so split UTF-8 characters retain the existing character limit.
+        text += decoder.decode(value, { stream: true });
+        if (text.length > maxChars) {
+          await reader.cancel().catch(() => undefined);
+          throw new RequestError('Request body is too large.', 413);
+        }
+      }
+    } finally { reader.releaseLock(); }
+  }
   if (text.length > maxChars) throw new RequestError('Request body is too large.', 413);
   try { return JSON.parse(text || '{}'); } catch { throw new RequestError('Invalid JSON request.', 400); }
 }
