@@ -66,6 +66,14 @@ test('document helpers preserve Windows paths alongside escaped and real line br
   }
 });
 
+test('document helpers decode escaped breaks after ordinary labels', () => {
+  for (const separator of ['\\n', '\\r\\n', '\\r']) {
+    const lines = ['Instructions:', '- Read the file.', '- Discuss.'];
+    assert.equal(documentBlockContent({ kind: 'paragraph', text: lines.join(separator) }), lines.join('\n'));
+    assert.equal(documentBlockText({ kind: 'bullet', text: lines.join(separator) }), `• ${lines.join('\n')}`);
+  }
+});
+
 test('PDF and Word retain literal Windows paths in notes, instructions and worksheet cells', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'workshop-path-export-'));
   try {
@@ -73,11 +81,13 @@ test('PDF and Word retain literal Windows paths in notes, instructions and works
     const run = await completedRun(store);
     const note = String.raw`Open the fictional worksheet at C:\new-folder\notes.txt before the exercise.`;
     const instruction = String.raw`Read C:\reports\notes.txt before completing the worksheet.`;
+    const list = String.raw`Instructions:\n- Read the file.\n- Discuss.`;
     const literalPath = String.raw`C:\reports\notes.txt`;
     const worksheet = `| File | Response |\n| --- | --- |\n| ${literalPath} | [ ] |`;
     const savedNote = `${note} [${fixtureMaterials[0].id}]`;
     run.pack!.facilitatorNotes.push(savedNote);
-    run.pack!.exercise.instructions.push(instruction, worksheet, worksheet.replaceAll('\n', '\\n'));
+    const labeledWorksheet = `Worksheet:\\n${worksheet.replaceAll('\n', '\\n')}`;
+    run.pack!.exercise.instructions.push(list, instruction, worksheet, labeledWorksheet);
     run.validation = validatePack(run.pack!, brief, run.readSourceIds, fixtureMaterials, { requireDeliverableFields: true });
     assert.equal(run.validation.valid, true, run.validation.issues.join(' '));
     run.contentReview = { ...run.contentReview!, reviewedPackHash: packHash(run.pack!), checks: (await scriptedContentReviewer({ brief, materials: fixtureMaterials, pack: run.pack! })).checks };
@@ -101,6 +111,8 @@ test('PDF and Word retain literal Windows paths in notes, instructions and works
     try {
       const { text: pdfText } = await parser.getText();
       for (const text of [pdfText, wordText]) {
+        assert.match(text, /Instructions:\s+- Read the file\.\s+- Discuss\./, 'Label-prefixed escaped lists render with real breaks.');
+        assert.ok(!text.includes('Instructions:\\n') && !text.includes('Worksheet:\\n'));
         assert.ok(text.includes(note), 'The complete facilitator note retains its literal path.');
         assert.ok(text.includes(instruction), 'The exercise instruction retains its literal path.');
         assert.equal(text.split(literalPath).length - 1, 3, 'The instruction and both worksheet cells retain the exact path.');
@@ -109,10 +121,10 @@ test('PDF and Word retain literal Windows paths in notes, instructions and works
     assert.equal(JSON.stringify(run), before, 'Export preserves the original in-memory source text.');
     assert.equal(JSON.stringify(await store.read(run.id)), savedBefore, 'Export preserves the saved pack.');
     assert.equal(packMarkdown(run), markdownBefore);
-    for (const text of [note, instruction, worksheet, worksheet.replaceAll('\n', '\\n')]) assert.ok(markdownBefore.includes(text));
+    for (const text of [note, list, instruction, worksheet, labeledWorksheet]) assert.ok(markdownBefore.includes(text));
     const jsonPack = JSON.parse(JSON.stringify(run)).pack;
     assert.equal(jsonPack.facilitatorNotes.at(-1), savedNote);
-    assert.deepEqual(jsonPack.exercise.instructions.slice(-3), [instruction, worksheet, worksheet.replaceAll('\n', '\\n')]);
+    assert.deepEqual(jsonPack.exercise.instructions.slice(-4), [list, instruction, worksheet, labeledWorksheet]);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 

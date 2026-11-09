@@ -56,8 +56,9 @@ export function presentParticipantWorksheet(table: WorksheetTable): (WorksheetTa
 const structuredEscapedBreak = /(?:\\r\\n|\\n|\\r)(?:(?:\\r\\n|\\n|\\r)|[ \t]*(?:[-*•]|\d+[.)]|\|)[ \t])/;
 // Match drive-rooted and UNC paths before break markers. Quoted paths can contain
 // spaces; unquoted paths end before an explicit paragraph, list or table break.
+// A drive letter must start a token, not be the last letter of a label like Instructions:.
 const pathOrEscapedBreak = new RegExp(
-  String.raw`("(?:[A-Za-z]:\\|\\\\)[^"\r\n]*"|(?:[A-Za-z]:\\|\\\\)(?:(?!${structuredEscapedBreak.source})[^\s|<>"\`?*])+)|\\r\\n|\\n|\\r`,
+  String.raw`("(?:[A-Za-z]:\\|\\\\)[^"\r\n]*"|(?:\b[A-Za-z]:\\|\\\\)(?:(?!${structuredEscapedBreak.source})[^\s|<>"\`?*])+)|\\r\\n|\\n|\\r`,
   'g',
 );
 
