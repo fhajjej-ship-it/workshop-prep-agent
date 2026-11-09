@@ -56,6 +56,78 @@ function xmlText(xml: string): string {
 
 const normalized = (text: string) => text.replace(/-\s+/g, '-').replace(/\s+/g, ' ').trim();
 
+test('document helpers preserve Windows paths alongside escaped and real line breaks', () => {
+  for (const literal of [String.raw`C:\new-folder\notes.txt`, String.raw`C:\reports\notes.txt`, String.raw`\\server\reports\notes.txt`, String.raw`"C:\new folder\notes.txt"`]) {
+    const text = `Open ${literal} before the exercise.\\nNext step.\\r\\nThen review.\\rFinish.\nReal newline.`;
+    const expected = `Open ${literal} before the exercise.\nNext step.\nThen review.\nFinish.\nReal newline.`;
+    assert.equal(documentBlockContent({ kind: 'paragraph', text }), expected);
+    assert.equal(documentBlockText({ kind: 'bullet', text }), `• ${expected}`);
+    assert.equal(documentBlockText({ kind: 'number', number: 2, text }), `2. ${expected}`);
+  }
+});
+
+test('document helpers decode escaped breaks after ordinary labels', () => {
+  for (const separator of ['\\n', '\\r\\n', '\\r']) {
+    const lines = ['Instructions:', '- Read the file.', '- Discuss.'];
+    assert.equal(documentBlockContent({ kind: 'paragraph', text: lines.join(separator) }), lines.join('\n'));
+    assert.equal(documentBlockText({ kind: 'bullet', text: lines.join(separator) }), `• ${lines.join('\n')}`);
+  }
+});
+
+test('PDF and Word retain literal Windows paths in notes, instructions and worksheet cells', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'workshop-path-export-'));
+  try {
+    const store = new LocalRunStore(directory);
+    const run = await completedRun(store);
+    const note = String.raw`Open the fictional worksheet at C:\new-folder\notes.txt before the exercise.`;
+    const instruction = String.raw`Read C:\reports\notes.txt before completing the worksheet.`;
+    const list = String.raw`Instructions:\n- Read the file.\n- Discuss.`;
+    const literalPath = String.raw`C:\reports\notes.txt`;
+    const worksheet = `| File | Response |\n| --- | --- |\n| ${literalPath} | [ ] |`;
+    const savedNote = `${note} [${fixtureMaterials[0].id}]`;
+    run.pack!.facilitatorNotes.push(savedNote);
+    const labeledWorksheet = `Worksheet:\\n${worksheet.replaceAll('\n', '\\n')}`;
+    run.pack!.exercise.instructions.push(list, instruction, worksheet, labeledWorksheet);
+    run.validation = validatePack(run.pack!, brief, run.readSourceIds, fixtureMaterials, { requireDeliverableFields: true });
+    assert.equal(run.validation.valid, true, run.validation.issues.join(' '));
+    run.contentReview = { ...run.contentReview!, reviewedPackHash: packHash(run.pack!), checks: (await scriptedContentReviewer({ brief, materials: fixtureMaterials, pack: run.pack! })).checks };
+    await store.save(run);
+    const before = JSON.stringify(run);
+    const savedBefore = JSON.stringify(await store.read(run.id));
+    const markdownBefore = packMarkdown(run);
+    const blocks = packExportBlocks(run);
+    assert.ok(blocks.some(block => block.kind === 'number' && documentBlockContent(block) === instruction));
+    const tables = blocks.filter(block => block.kind === 'table' && block.table?.headers[0] === 'File');
+    assert.equal(tables.length, 2, 'Both real and escaped table line breaks produce worksheets.');
+    for (const block of tables) assert.deepEqual(block.table!.rows, [[literalPath, '']]);
+    const [pdf, docx] = await Promise.all([packPdf(run), packDocx(run)]);
+    const zip = await JSZip.loadAsync(docx, { checkCRC32: true });
+    const documentXml = await zip.file('word/document.xml')!.async('string');
+    const wordText = xmlText(documentXml);
+    const wordTables = [...documentXml.matchAll(/<w:tbl>[\s\S]*?<\/w:tbl>/g)].filter(table => xmlText(table[0]).startsWith('File'));
+    assert.equal(wordTables.length, 2);
+    for (const table of wordTables) assert.ok(xmlText(table[0]).includes(literalPath), 'Word worksheet cells retain the exact path.');
+    const parser = new PDFParse({ data: pdf, isEvalSupported: false, disableFontFace: true, useSystemFonts: false });
+    try {
+      const { text: pdfText } = await parser.getText();
+      for (const text of [pdfText, wordText]) {
+        assert.match(text, /Instructions:\s+- Read the file\.\s+- Discuss\./, 'Label-prefixed escaped lists render with real breaks.');
+        assert.ok(!text.includes('Instructions:\\n') && !text.includes('Worksheet:\\n'));
+        assert.ok(text.includes(note), 'The complete facilitator note retains its literal path.');
+        assert.ok(text.includes(instruction), 'The exercise instruction retains its literal path.');
+        assert.equal(text.split(literalPath).length - 1, 3, 'The instruction and both worksheet cells retain the exact path.');
+      }
+    } finally { await parser.destroy(); }
+    assert.equal(JSON.stringify(run), before, 'Export preserves the original in-memory source text.');
+    assert.equal(JSON.stringify(await store.read(run.id)), savedBefore, 'Export preserves the saved pack.');
+    assert.equal(packMarkdown(run), markdownBefore);
+    for (const text of [note, list, instruction, worksheet, labeledWorksheet]) assert.ok(markdownBefore.includes(text));
+    const jsonPack = JSON.parse(JSON.stringify(run)).pack;
+    assert.equal(jsonPack.facilitatorNotes.at(-1), savedNote);
+    assert.deepEqual(jsonPack.exercise.instructions.slice(-4), [list, instruction, worksheet, labeledWorksheet]);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
 test('PDF and Word generators create openable, complete, Unicode documents and reusable fixture files', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'workshop-export-'));
   try {

@@ -43,6 +43,37 @@ test('literal paths, fenced samples and ordinary pipes are not reinterpreted as 
   }
 });
 
+test('structured escaped breaks preserve Windows paths in prose and worksheet cells', () => {
+  const literal = String.raw`C:\reports\notes.txt`;
+  const text = `Open ${literal} first.\n\n| File | Response |\n| --- | --- |\n| ${literal} | [ ] |`;
+  assert.equal(normalizeWorkshopText(text.replaceAll('\n', '\\n')), text);
+  assert.deepEqual(parseWorkshopText(text.replaceAll('\n', '\\n')), [
+    { kind: 'paragraph', text: `Open ${literal} first.` },
+    { kind: 'table', headers: ['File', 'Response'], rows: [[literal, '[ ]']] },
+  ]);
+});
+
+test('structured escaped breaks immediately after paths still format paragraphs, lists and tables', () => {
+  const literal = String.raw`C:\reports\notes.txt`;
+  for (const following of ['\n\nNext paragraph.', '\n- Next item.', '\n2. Next item.', '\n| File | Response |\n| --- | --- |\n| A | [ ] |']) {
+    const text = literal + following;
+    assert.equal(normalizeWorkshopText(text.replaceAll('\n', '\\n')), text);
+  }
+});
+
+test('ordinary labels before escaped lists and tables are not drive paths', () => {
+  const literal = String.raw`C:\reports\notes.txt`;
+  for (const separator of ['\\n', '\\r\\n', '\\r']) {
+    const list = ['Instructions:', '- Read the file.', '- Discuss.'];
+    assert.equal(normalizeWorkshopText(list.join(separator)), list.join('\n'));
+    const worksheet = ['Worksheet:', '| File | Response |', '| --- | --- |', `| ${literal} | [ ] |`];
+    assert.deepEqual(parseWorkshopText(worksheet.join(separator)), [
+      { kind: 'paragraph', text: 'Worksheet:' },
+      { kind: 'table', headers: ['File', 'Response'], rows: [[literal, '[ ]']] },
+    ]);
+  }
+});
+
 test('participant entry tables can omit a divider while prose, formulas and filled rows stay literal', () => {
   const text = 'Fill the worksheet.\n\nCard ID | Decision | Policy reason\nCard A | [Enter label] | [Enter policy reason]\nCard B | [Enter label] | [Enter policy reason]\n\nReview both decisions.';
   const parsed = parseWorkshopText(text, { participantWorksheet: true });

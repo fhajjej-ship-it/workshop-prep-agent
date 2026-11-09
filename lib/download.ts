@@ -1,6 +1,6 @@
 import type { Run } from './types';
 import { getRunMaterials, usesExampleMaterials } from './materials';
-import { parseWorkshopText, presentParticipantWorksheet } from './workshop-text';
+import { normalizeEscapedLineBreaks, parseWorkshopText, presentParticipantWorksheet } from './workshop-text';
 
 export function packProvenance(run: Run) {
   const examples = usesExampleMaterials(getRunMaterials(run));
@@ -156,13 +156,13 @@ export function exportBlockText(block: ExportBlock): string {
   return block.kind === 'bullet' ? `• ${block.text}` : block.kind === 'number' ? `${block.number}. ${block.text}` : block.text;
 }
 
-/** Treat common model-escaped line breaks as layout only in binary documents. */
+/** Treat model-escaped breaks as document layout while preserving literal Windows paths. */
 export function documentBlockText(block: ExportBlock): string {
-  return exportBlockText(block).replace(/\\r\\n|\\n|\\r/g, '\n');
+  return normalizeEscapedLineBreaks(exportBlockText(block));
 }
 
 export function documentBlockContent(block: ExportBlock): string {
-  return block.text.replace(/\\r\\n|\\n|\\r/g, '\n');
+  return normalizeEscapedLineBreaks(block.text);
 }
 
 export function packMarkdown(run: Run) {
