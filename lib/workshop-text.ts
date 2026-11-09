@@ -53,11 +53,20 @@ export function presentParticipantWorksheet(table: WorksheetTable): (WorksheetTa
   return groups.map(group => ({ title: group.title, headers: group.columns.map(column => headers[column]), rows: rows.map(row => group.columns.map(column => row[column])) }));
 }
 
-const escapedBreak = /\\r\\n|\\n|\\r/g;
 const structuredEscapedBreak = /(?:\\r\\n|\\n|\\r)(?:(?:\\r\\n|\\n|\\r)|[ \t]*(?:[-*•]|\d+[.)]|\|)[ \t])/;
+// Match drive-rooted and UNC paths before break markers. Quoted paths can contain
+// spaces; unquoted paths end before an explicit paragraph, list or table break.
+const pathOrEscapedBreak = new RegExp(
+  String.raw`("(?:[A-Za-z]:\\|\\\\)[^"\r\n]*"|(?:[A-Za-z]:\\|\\\\)(?:(?!${structuredEscapedBreak.source})[^\s|<>"\`?*])+)|\\r\\n|\\n|\\r`,
+  'g',
+);
+
+export function normalizeEscapedLineBreaks(text: string): string {
+  return text.replace(pathOrEscapedBreak, (match, path: string | undefined) => path ?? '\n');
+}
 
 export function normalizeWorkshopText(text: string): string {
-  return (structuredEscapedBreak.test(text) ? text.replace(escapedBreak, '\n') : text).replace(/\r\n?/g, '\n');
+  return (structuredEscapedBreak.test(text) ? normalizeEscapedLineBreaks(text) : text).replace(/\r\n?/g, '\n');
 }
 
 function tableCells(line: string): string[] | null {
